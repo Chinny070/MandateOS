@@ -23,7 +23,7 @@ def _hex(address: bytes) -> str:
 
 def _make_vault(direct_vm, direct_deploy, model="REPAYABLE", due_days=1, share_bps=0,
                 challenge_seconds=86400, installment_count=1,
-                installment_interval_seconds=0):
+                installment_interval_seconds=0, beneficiary_mode="IC"):
     parent = create_address("vault-parent-" + model + str(due_days))
     operator = create_address("vault-operator-" + model + str(due_days))
     beneficiary = create_address("vault-beneficiary-" + model + str(due_days))
@@ -48,7 +48,7 @@ def _make_vault(direct_vm, direct_deploy, model="REPAYABLE", due_days=1, share_b
     with direct_vm.prank(parent):
         vault.configure_agreement(
             "agreement-1", "funding-1", "project-lifecycle", _hex(operator),
-            _hex(beneficiary), model, 1, 100, due_at, 0 if not due_days else 3600,
+            _hex(beneficiary), beneficiary_mode, model, 1, 100, due_at, 0 if not due_days else 3600,
             installment_count if model == "REPAYABLE" else 0,
             installment_interval_seconds, challenge_seconds, 86400, share_bps,
         )
@@ -61,7 +61,7 @@ def test_agreement_is_parent_bound_and_milestone_schedule_is_capped(direct_vm, d
     with direct_vm.prank(create_address("untrusted-agreement-caller")), direct_vm.expect_revert("MandateOS parent required"):
         vault.configure_agreement(
             "agreement-2", "funding-1", "project-lifecycle", _hex(operator),
-            _hex(beneficiary), "GRANT", 1, 100, 0, 0, 0, 0, 86400, 86400, 0,
+            _hex(beneficiary), "IC", "GRANT", 1, 100, 0, 0, 0, 0, 86400, 86400, 0,
         )
     with direct_vm.prank(parent):
         vault.define_milestone("build", 60, "Verified construction completion")
@@ -160,6 +160,102 @@ def test_payout_reservation_cannot_overlap_refund_and_requires_reconciliation(
         "payout id or milestone authorization invalid"
     ):
         vault.initiate_milestone_payout("payment-2", "build")
+
+
+def test_eoa_payout_uses_finalized_external_transfer_and_never_self_verifies(
+    direct_vm, direct_deploy
+):
+    direct_vm.warp(BASE.isoformat())
+    vault, parent, _, _ = _make_vault(
+        direct_vm, direct_deploy, beneficiary_mode="EOA"
+    )
+    with direct_vm.prank(parent):
+        vault.define_milestone("build", 40, "Verified construction completion")
+    vault.milestone_status["build"] = "AUTHORIZED"
+    vault.milestone_evidence_digest["build"] = "b" * 64
+    vault.milestone_expires_at["build"] = int((BASE + timedelta(days=1)).timestamp())
+    vault.milestone_mandate_version["build"] = 1
+    from genlayer.py import calldata
+    from genlayer.py.public_abi import ResultCode
+    def external_hook(vm, request):
+        if "CallContract" in request:
+            return bytes([int(ResultCode.RETURN)]) + calldata.encode(0)
+        return None
+
+    direct_vm._gl_call_hook = external_hook
+    with direct_vm.prank(parent):
+        vault.initiate_milestone_payout("eoa-payment-1", "build")
+    assert vault.get_payout_status("eoa-payment-1") == "PENDING"
+    assert vault.payout_destination["eoa-payment-1"] == vault.agreement_beneficiary
+    assert vault.payout_amount["eoa-payment-1"] == 40
+    assert vault.payout_destination_mode["eoa-payment-1"] == "EOA"
+    assert vault.get_payout_details("eoa-payment-1")[:4] == (
+        "PENDING", "EOA", vault.agreement_beneficiary.as_hex, 40,
+    )
+    assert vault.payout_reserved_wei == 40
+    assert vault.unsettled_payout_count == 1
+    with direct_vm.prank(vault.agreement_beneficiary), direct_vm.expect_revert(
+        "EOA settlement requires independent receipt reconciliation"
+    ):
+        vault.record_payout_child_success("eoa-payment-1")
+    with direct_vm.expect_revert(
+        "EOA payout remains unverified pending independent receipt proof"
+    ):
+        vault.reconcile_payout("eoa-payment-1")
+    direct_vm.warp((BASE + timedelta(days=1, seconds=1)).isoformat())
+    vault.flag_payout_uncertain("eoa-payment-1")
+    assert vault.get_payout_status("eoa-payment-1") == "VALUE_AT_RISK"
+    assert vault.payout_reserved_wei == 40
+    with direct_vm.prank(parent), direct_vm.expect_revert(
+        "payout id or milestone authorization invalid"
+    ):
+        vault.initiate_milestone_payout("eoa-payment-retry", "build")
+    with direct_vm.prank(parent), direct_vm.expect_revert("agreement has unresolved obligations"):
+        vault.close_agreement()
+
+
+def test_governed_return_distribution_reserves_principal_and_realized_income(
+    direct_vm, direct_deploy
+):
+    direct_vm.warp(BASE.isoformat())
+    vault, parent, _, _ = _make_vault(direct_vm, direct_deploy)
+    vault.outstanding_principal_wei = 0
+    vault.principal_recovered_wei = 30
+    vault.realized_return_wei = 20
+    vault.total_repayment_received_wei = 50
+    outbound = []
+    direct_vm._gl_call_hook = lambda vm, request: (
+        outbound.append(request["PostMessage"]) or {"ok": None}
+        if "PostMessage" in request else None
+    )
+
+    with direct_vm.prank(create_address("unauthorized-distribution")), direct_vm.expect_revert(
+        "MandateOS parent required"
+    ):
+        vault.initiate_return_distribution("dist-1", 20, 10)
+    with direct_vm.prank(parent):
+        vault.initiate_return_distribution("dist-1", 20, 10)
+    assert vault.get_distribution_available() == (10, 10)
+    assert vault.principal_distribution_reserved_wei == 20
+    assert vault.return_distribution_reserved_wei == 10
+    assert outbound[-1]["value"] == 30
+    assert outbound[-1]["on"] == "finalized"
+    with direct_vm.prank(parent), direct_vm.expect_revert(
+        "distribution exceeds received available funds"
+    ):
+        vault.initiate_return_distribution("dist-overlap", 11, 0)
+
+    with direct_vm.prank(parent):
+        vault.record_return_distribution_child_success("dist-1", 20, 10)
+    assert vault.get_distribution_status("dist-1") == "CHILD_SUCCESS"
+    assert vault.get_distribution_available() == (10, 10)
+    with direct_vm.prank(parent), direct_vm.expect_revert("distribution is not pending"):
+        vault.record_return_distribution_child_success("dist-1", 20, 10)
+    with direct_vm.prank(parent):
+        vault.record_return_distribution_reconciled("dist-1")
+    assert vault.get_distribution_status("dist-1") == "VERIFIED"
+    assert vault.principal_distributed_wei == 20
+    assert vault.realized_return_distributed_wei == 10
 
 
 def test_repayments_separate_principal_recovery_from_realized_return(direct_vm, direct_deploy):

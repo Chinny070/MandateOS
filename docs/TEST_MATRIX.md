@@ -27,6 +27,8 @@
 - MandateOS Direct Mode checks governance gating and asynchronous configuration/reconciliation for agreements and milestones, member-authorized challenges, and governance-timelocked milestone/default resolutions.
 - Deterministic test fixtures set an already validator-approved milestone or model a child balance change where Direct Mode lacks nondeterministic or asynchronous execution. Those fixtures test subsequent deterministic contract paths only. They are not evidence that web evaluation, a child transfer, recipient settlement, or GEN movement happened.
 - Direct Mode cannot prove the beneficiary IC receipt protocol, successful/failed child transactions, real contract balance deltas, web/Equivalence Principle consensus, scheduled receipt ordering, or StudioNet settlement. No live deployment or GEN transfer is claimed.
+- Additional Direct Mode cases bind EOA/IC recipient mode and a fixed destination, deny any EOA callback or local reconciliation from promoting a payment, retain reservations after timeout, deny duplicate payout attempts, govern actual repayment/return distributions, and route closure through a timelocked DAO proposal.
+- `tests/test_studionet_rpc.py` uses deterministic JSON-RPC fixtures to check chain ID 61999, receipt identity, source/destination/value mismatches, failed/pending transfers, balance snapshots and fail-closed missing parent-child linkage. These fixtures are adapter tests only; this turn did not query StudioNet.
 
 ## Gate 3: Evidence + clock + consensus
 
@@ -36,8 +38,9 @@
 
 ## Gate 4: Vault lifecycle
 
-- Multiple milestones and beneficiary allowlists, pending/approved/challenged/rejected/expired/paid, partial payouts, dispute freeze, timeout liveness, refundable residuals, deposit repayment, return principal, revenue-sharing receipts, missed repayments/default, agreement closure.
+- Single immutable governance-approved beneficiary per agreement, including ordinary EOA mode; milestone pending/approved/challenged/rejected/expired/paid states; dispute freeze; refundable residuals; actual payable repayment and revenue deposits; governed principal/return distribution; and timelocked closure after obligations are cleared.
 - Negative: early payout, recursive/duplicate payout, forged completion, invalid beneficiary, partial refund over available escrow, excessive distribution, late appeal, malicious operator withdrawals.
+- EOA external transfers cannot be completed or reconciled in Direct Mode. A live EOA payout must remain unverified unless the external transaction receipt is causally tied to its finalized IC parent and matches the bound sender, destination, amount and balance evidence.
 
 ## Gate 5: Full operation and public UI
 

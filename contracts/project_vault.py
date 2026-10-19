@@ -10,6 +10,15 @@ import hashlib
 import json
 
 
+@gl.evm.contract_interface
+class _ExternalRecipient:
+    class View:
+        pass
+
+    class Write:
+        pass
+
+
 class ProjectVault(gl.Contract):
     mandate_os: Address
     project_id: str
@@ -23,6 +32,7 @@ class ProjectVault(gl.Contract):
     agreement_allocation_id: str
     agreement_operator: Address
     agreement_beneficiary: Address
+    agreement_beneficiary_mode: str
     agreement_model: str
     agreement_mandate_version: u256
     agreement_principal_cap_wei: u256
@@ -64,6 +74,8 @@ class ProjectVault(gl.Contract):
     payout_status: TreeMap[str, str]
     payout_milestone: TreeMap[str, str]
     payout_amount: TreeMap[str, u256]
+    payout_destination: TreeMap[str, Address]
+    payout_destination_mode: TreeMap[str, str]
     payout_queued_at: TreeMap[str, u256]
     payout_reserved_wei: u256
     unsettled_payout_count: u256
@@ -74,6 +86,15 @@ class ProjectVault(gl.Contract):
     default_challenge_ends_at: u256
     default_challenged: bool
     default_challenge_digest: str
+    principal_distributed_wei: u256
+    realized_return_distributed_wei: u256
+    principal_distribution_reserved_wei: u256
+    return_distribution_reserved_wei: u256
+    distribution_status: TreeMap[str, str]
+    distribution_principal_wei: TreeMap[str, u256]
+    distribution_return_wei: TreeMap[str, u256]
+    distribution_total_wei: TreeMap[str, u256]
+    distribution_ids: DynArray[str]
 
     def __init__(self, mandate_os_address: str, project_id: str):
         if not project_id or len(project_id) > 80:
@@ -81,6 +102,7 @@ class ProjectVault(gl.Contract):
         self.mandate_os = Address(mandate_os_address)
         self.agreement_operator = self.mandate_os
         self.agreement_beneficiary = self.mandate_os
+        self.agreement_beneficiary_mode = "IC"
         self.project_id = project_id
         self.total_received_wei = u256(0)
         self.total_refund_scheduled_wei = u256(0)
@@ -99,6 +121,10 @@ class ProjectVault(gl.Contract):
         self.outstanding_principal_wei = u256(0)
         self.principal_recovered_wei = u256(0)
         self.realized_return_wei = u256(0)
+        self.principal_distributed_wei = u256(0)
+        self.realized_return_distributed_wei = u256(0)
+        self.principal_distribution_reserved_wei = u256(0)
+        self.return_distribution_reserved_wei = u256(0)
         self.total_repayment_received_wei = u256(0)
         self.total_revenue_reported_wei = u256(0)
         self.total_revenue_received_wei = u256(0)
@@ -143,6 +169,7 @@ class ProjectVault(gl.Contract):
         project_id: str,
         operator_address: str,
         beneficiary_address: str,
+        beneficiary_mode: str,
         financing_model: str,
         mandate_version: u256,
         principal_cap_wei: u256,
@@ -166,9 +193,17 @@ class ProjectVault(gl.Contract):
                 or principal_cap_wei == u256(0)
                 or principal_cap_wei > self.allocations[allocation_id]):
             raise gl.vm.UserError("agreement parties, mandate, or principal cap invalid")
-        beneficiary = gl.get_contract_at(Address(beneficiary_address))
-        if beneficiary.view().get_project_payment_protocol_version() != u256(1):
-            raise gl.vm.UserError("beneficiary must support the payout receipt protocol")
+        operator = Address(operator_address)
+        beneficiary_address_value = Address(beneficiary_address)
+        zero_address = "0x0000000000000000000000000000000000000000"
+        if operator.as_hex == zero_address or beneficiary_address_value.as_hex == zero_address:
+            raise gl.vm.UserError("agreement parties must be nonzero addresses")
+        if beneficiary_mode not in ("EOA", "IC"):
+            raise gl.vm.UserError("beneficiary mode must be EOA or IC")
+        if beneficiary_mode == "IC":
+            beneficiary = gl.get_contract_at(beneficiary_address_value)
+            if beneficiary.view().get_project_payment_protocol_version() != u256(1):
+                raise gl.vm.UserError("beneficiary must support the payout receipt protocol")
         if financing_model not in ("GRANT", "REPAYABLE", "REVENUE_SHARE"):
             raise gl.vm.UserError("unsupported financing model")
         if (challenge_seconds == u256(0) or challenge_seconds > u256(30 * 86400)
@@ -207,8 +242,9 @@ class ProjectVault(gl.Contract):
             raise gl.vm.UserError("grant must not include repayment or revenue-share terms")
         self.agreement_id = agreement_id
         self.agreement_allocation_id = allocation_id
-        self.agreement_operator = Address(operator_address)
-        self.agreement_beneficiary = Address(beneficiary_address)
+        self.agreement_operator = operator
+        self.agreement_beneficiary = beneficiary_address_value
+        self.agreement_beneficiary_mode = beneficiary_mode
         self.agreement_model = financing_model
         self.agreement_mandate_version = mandate_version
         self.agreement_principal_cap_wei = principal_cap_wei
@@ -448,15 +484,24 @@ must return eligible=false. Source content JSON: {page}"""
         self.unsettled_payout_count += u256(1)
         self.payout_milestone[payment_id] = milestone_id
         self.payout_amount[payment_id] = amount
+        self.payout_destination[payment_id] = self.agreement_beneficiary
+        self.payout_destination_mode[payment_id] = self.agreement_beneficiary_mode
         self.payout_queued_at[payment_id] = now
         self.milestone_status[milestone_id] = "PAYOUT_PENDING"
-        beneficiary = gl.get_contract_at(self.agreement_beneficiary)
-        beneficiary.emit(value=amount, on="finalized").receive_project_payment(
-            payment_id, self.project_id, self.agreement_id
-        )
+        if self.agreement_beneficiary_mode == "IC":
+            beneficiary = gl.get_contract_at(self.agreement_beneficiary)
+            beneficiary.emit(value=amount, on="finalized").receive_project_payment(
+                payment_id, self.project_id, self.agreement_id
+            )
+        else:
+            # External messages execute only on finalization. Their outcome is
+            # reconciled offchain; no callback or local balance delta can prove it.
+            _ExternalRecipient(self.agreement_beneficiary).emit_transfer(value=amount)
 
     @gl.public.write
     def record_payout_child_success(self, payment_id: str) -> None:
+        if self.payout_destination_mode.get(payment_id, "") != "IC":
+            raise gl.vm.UserError("EOA settlement requires independent receipt reconciliation")
         if gl.message.sender_address != self.agreement_beneficiary:
             raise gl.vm.UserError("configured beneficiary required")
         if self.payout_status.get(payment_id, "") not in ("PENDING", "VALUE_AT_RISK"):
@@ -481,6 +526,8 @@ must return eligible=false. Source content JSON: {page}"""
     def reconcile_payout(self, payment_id: str) -> None:
         if self.payout_status.get(payment_id, "") == "VERIFIED":
             return
+        if self.payout_destination_mode.get(payment_id, "") == "EOA":
+            raise gl.vm.UserError("EOA payout remains unverified pending independent receipt proof")
         if self.payout_status.get(payment_id, "") != "CHILD_SUCCESS":
             raise gl.vm.UserError("beneficiary child success not confirmed")
         recipient = gl.get_contract_at(self.agreement_beneficiary)
@@ -646,8 +693,12 @@ must return eligible=false. Source content JSON: {page}"""
                 or self.payout_reserved_wei > u256(0)
                 or self.unsettled_payout_count > u256(0)
                 or self.refund_reserved_wei > u256(0)
+                or self.principal_distribution_reserved_wei > u256(0)
+                or self.return_distribution_reserved_wei > u256(0)
                 or self.default_status in ("CHALLENGEABLE", "CHALLENGED", "UNRESOLVED")):
             raise gl.vm.UserError("agreement has unresolved obligations")
+        if self.get_distribution_available() != (u256(0), u256(0)):
+            raise gl.vm.UserError("agreement has undistributed realized funds")
         for milestone_id in self.milestone_ids:
             if self.milestone_status[milestone_id] not in ("PAID", "CANCELLED", "REJECTED", "EXPIRED"):
                 raise gl.vm.UserError("agreement has an unresolved milestone")
@@ -657,7 +708,91 @@ must return eligible=false. Source content JSON: {page}"""
                    + ((reported % u256(10000)) * self.agreement_revenue_share_bps) // u256(10000))
             if self.revenue_received_by_period.get(period_id, u256(0)) < due:
                 raise gl.vm.UserError("agreement has unpaid reported revenue share")
+        if self.get_refund_available_wei() > u256(0):
+            raise gl.vm.UserError("agreement has refundable balance")
         self.agreement_status = "CLOSED"
+
+    @gl.public.view
+    def can_close_agreement(self) -> bool:
+        if self.agreement_status != "ACTIVE":
+            return False
+        if (self.outstanding_principal_wei > u256(0)
+                or self.milestone_obligations_wei > u256(0)
+                or self.payout_reserved_wei > u256(0)
+                or self.unsettled_payout_count > u256(0)
+                or self.refund_reserved_wei > u256(0)
+                or self.principal_distribution_reserved_wei > u256(0)
+                or self.return_distribution_reserved_wei > u256(0)
+                or self.default_status in ("CHALLENGEABLE", "CHALLENGED", "UNRESOLVED")
+                or self.get_distribution_available() != (u256(0), u256(0))
+                or self.get_refund_available_wei() > u256(0)):
+            return False
+        for milestone_id in self.milestone_ids:
+            if self.milestone_status[milestone_id] not in ("PAID", "CANCELLED", "REJECTED", "EXPIRED"):
+                return False
+        for period_id in self.revenue_period_ids:
+            reported = self.revenue_reported_by_period[period_id]
+            due = ((reported // u256(10000)) * self.agreement_revenue_share_bps
+                   + ((reported % u256(10000)) * self.agreement_revenue_share_bps) // u256(10000))
+            if self.revenue_received_by_period.get(period_id, u256(0)) < due:
+                return False
+        return True
+
+    @gl.public.write
+    def initiate_return_distribution(
+        self, distribution_id: str, principal_wei: u256, realized_return_wei: u256
+    ) -> None:
+        self._require_parent()
+        if self.agreement_status != "ACTIVE":
+            raise gl.vm.UserError("active agreement required for distribution")
+        if (not distribution_id or len(distribution_id) > 80
+                or self.distribution_status.get(distribution_id, "")
+                or (principal_wei == u256(0) and realized_return_wei == u256(0))):
+            raise gl.vm.UserError("distribution id or amount invalid")
+        available_principal, available_return = self.get_distribution_available()
+        if principal_wei > available_principal or realized_return_wei > available_return:
+            raise gl.vm.UserError("distribution exceeds received available funds")
+        amount = principal_wei + realized_return_wei
+        if self.balance < self.milestone_obligations_wei + amount:
+            raise gl.vm.UserError("distribution exceeds unreserved vault balance")
+        self.distribution_status[distribution_id] = "PENDING"
+        self.distribution_principal_wei[distribution_id] = principal_wei
+        self.distribution_return_wei[distribution_id] = realized_return_wei
+        self.distribution_total_wei[distribution_id] = amount
+        self.distribution_ids.append(distribution_id)
+        self.principal_distribution_reserved_wei += principal_wei
+        self.return_distribution_reserved_wei += realized_return_wei
+        treasury = gl.get_contract_at(self.mandate_os)
+        treasury.emit(value=amount, on="finalized").receive_project_return(
+            distribution_id, self.project_id, self.agreement_id,
+            principal_wei, realized_return_wei,
+        )
+
+    @gl.public.write
+    def record_return_distribution_child_success(
+        self, distribution_id: str, principal_wei: u256, realized_return_wei: u256
+    ) -> None:
+        self._require_parent()
+        if self.distribution_status.get(distribution_id, "") != "PENDING":
+            raise gl.vm.UserError("distribution is not pending")
+        if (principal_wei != self.distribution_principal_wei[distribution_id]
+                or realized_return_wei != self.distribution_return_wei[distribution_id]):
+            raise gl.vm.UserError("distribution receipt amount mismatch")
+        if (principal_wei > self.principal_distribution_reserved_wei
+                or realized_return_wei > self.return_distribution_reserved_wei):
+            raise gl.vm.UserError("distribution reservation accounting mismatch")
+        self.principal_distribution_reserved_wei -= principal_wei
+        self.return_distribution_reserved_wei -= realized_return_wei
+        self.principal_distributed_wei += principal_wei
+        self.realized_return_distributed_wei += realized_return_wei
+        self.distribution_status[distribution_id] = "CHILD_SUCCESS"
+
+    @gl.public.write
+    def record_return_distribution_reconciled(self, distribution_id: str) -> None:
+        self._require_parent()
+        if self.distribution_status.get(distribution_id, "") != "CHILD_SUCCESS":
+            raise gl.vm.UserError("distribution child success is not confirmed")
+        self.distribution_status[distribution_id] = "VERIFIED"
 
     @gl.public.write.payable
     def fund_project(self, allocation_id: str, project_id: str) -> None:
@@ -743,7 +878,7 @@ must return eligible=false. Source content JSON: {page}"""
     @gl.public.view
     def get_agreement_summary(self) -> tuple[
         str, str, str, u256, u256, u256, u256, u256, u256, u256,
-        u256, u256, u256, u256, u256, u256, str, str, str,
+        u256, u256, u256, u256, u256, u256, str, str, str, str,
     ]:
         return (
             self.agreement_id,
@@ -765,6 +900,33 @@ must return eligible=false. Source content JSON: {page}"""
             self.agreement_status,
             self.agreement_operator.as_hex,
             self.agreement_beneficiary.as_hex,
+            self.agreement_beneficiary_mode,
+        )
+
+    @gl.public.view
+    def get_distribution_available(self) -> tuple[u256, u256]:
+        if (self.principal_distributed_wei + self.principal_distribution_reserved_wei
+                > self.principal_recovered_wei
+                or self.realized_return_distributed_wei + self.return_distribution_reserved_wei
+                > self.realized_return_wei):
+            raise gl.vm.UserError("distribution accounting exceeds received funds")
+        return (
+            self.principal_recovered_wei - self.principal_distributed_wei
+                - self.principal_distribution_reserved_wei,
+            self.realized_return_wei - self.realized_return_distributed_wei
+                - self.return_distribution_reserved_wei,
+        )
+
+    @gl.public.view
+    def get_distribution_status(self, distribution_id: str) -> str:
+        return self.distribution_status.get(distribution_id, "UNKNOWN")
+
+    @gl.public.view
+    def get_distribution_amounts(self, distribution_id: str) -> tuple[u256, u256, u256]:
+        return (
+            self.distribution_principal_wei.get(distribution_id, u256(0)),
+            self.distribution_return_wei.get(distribution_id, u256(0)),
+            self.distribution_total_wei.get(distribution_id, u256(0)),
         )
 
     @gl.public.view
@@ -799,6 +961,16 @@ must return eligible=false. Source content JSON: {page}"""
     @gl.public.view
     def get_payout_status(self, payment_id: str) -> str:
         return self.payout_status.get(payment_id, "UNKNOWN")
+
+    @gl.public.view
+    def get_payout_details(self, payment_id: str) -> tuple[str, str, str, u256, u256]:
+        return (
+            self.payout_status.get(payment_id, "UNKNOWN"),
+            self.payout_destination_mode.get(payment_id, ""),
+            self.payout_destination.get(payment_id, self.agreement_beneficiary).as_hex,
+            self.payout_amount.get(payment_id, u256(0)),
+            self.payout_queued_at.get(payment_id, u256(0)),
+        )
 
     @gl.public.view
     def get_repayment_status(self, repayment_id: str) -> str:

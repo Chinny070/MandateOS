@@ -83,6 +83,16 @@ class MandateOS(gl.Contract):
     project_agreement_id: TreeMap[str, str]
     project_agreement_status: TreeMap[str, str]
     project_agreement_proposal: TreeMap[str, str]
+    pending_project_close_proposal: TreeMap[str, str]
+    project_distribution_proposal: TreeMap[str, str]
+    pending_project_distribution: TreeMap[str, str]
+    distribution_project: TreeMap[str, str]
+    distribution_principal_wei: TreeMap[str, u256]
+    distribution_return_wei: TreeMap[str, u256]
+    distribution_total_wei: TreeMap[str, u256]
+    distribution_status: TreeMap[str, str]
+    total_project_principal_received_wei: u256
+    total_project_return_received_wei: u256
     pending_milestone_proposal: TreeMap[str, str]
     project_milestone_proposal: TreeMap[str, str]
     project_milestone_status: TreeMap[str, str]
@@ -135,6 +145,8 @@ class MandateOS(gl.Contract):
         self.total_deposited_wei = u256(0)
         self.total_refunds_received_wei = u256(0)
         self.pending_transfer_wei = u256(0)
+        self.total_project_principal_received_wei = u256(0)
+        self.total_project_return_received_wei = u256(0)
 
     def _now(self) -> u256:
         return u256(int(datetime.now(timezone.utc).timestamp()))
@@ -252,6 +264,17 @@ class MandateOS(gl.Contract):
             project_id = self.proposal_project[proposal_id]
             if self.pending_project_agreement.get(project_id, "") == proposal_id:
                 self.pending_project_agreement[project_id] = ""
+        elif kind == "VAULT_CLOSE":
+            project_id = self.proposal_project[proposal_id]
+            if self.pending_project_close_proposal.get(project_id, "") == proposal_id:
+                self.pending_project_close_proposal[project_id] = ""
+        elif kind == "VAULT_DISTRIBUTION":
+            project_id = self.proposal_project[proposal_id]
+            distribution_id = self.proposal_target_id[proposal_id]
+            if self.distribution_status.get(distribution_id, "") == "PROPOSED":
+                self.distribution_status[distribution_id] = "CANCELLED"
+            if self.pending_project_distribution.get(project_id, "") == distribution_id:
+                self.pending_project_distribution[project_id] = ""
         elif kind == "VAULT_MILESTONE":
             project_id = self.proposal_project[proposal_id]
             milestone_id = self.proposal_target_id[proposal_id]
@@ -394,6 +417,7 @@ class MandateOS(gl.Contract):
         allocation_id: str,
         operator_address: str,
         beneficiary_address: str,
+        beneficiary_mode: str,
         financing_model: str,
         principal_cap_wei: u256,
         due_at: u256,
@@ -418,9 +442,17 @@ class MandateOS(gl.Contract):
                 or principal_cap_wei == u256(0)
                 or principal_cap_wei > self.funding_amount[allocation_id]):
             raise gl.vm.UserError("agreement must bind to a verified current-mandate allocation")
-        beneficiary = gl.get_contract_at(Address(beneficiary_address))
-        if beneficiary.view().get_project_payment_protocol_version() != u256(1):
-            raise gl.vm.UserError("beneficiary must support the payout receipt protocol")
+        operator = Address(operator_address)
+        beneficiary = Address(beneficiary_address)
+        zero_address = "0x0000000000000000000000000000000000000000"
+        if operator.as_hex == zero_address or beneficiary.as_hex == zero_address:
+            raise gl.vm.UserError("agreement parties must be nonzero addresses")
+        if beneficiary_mode not in ("EOA", "IC"):
+            raise gl.vm.UserError("beneficiary mode must be EOA or IC")
+        if beneficiary_mode == "IC":
+            beneficiary_contract = gl.get_contract_at(beneficiary)
+            if beneficiary_contract.view().get_project_payment_protocol_version() != u256(1):
+                raise gl.vm.UserError("beneficiary must support the payout receipt protocol")
         if financing_model not in ("GRANT", "REPAYABLE", "REVENUE_SHARE"):
             raise gl.vm.UserError("unsupported financing model")
         if financing_model == "REPAYABLE":
@@ -441,9 +473,10 @@ class MandateOS(gl.Contract):
         self.proposal_project[proposal_id] = project_id
         self.proposal_target_id[proposal_id] = agreement_id
         self.proposal_digest[proposal_id] = allocation_id
-        self.proposal_address[proposal_id] = Address(operator_address)
-        self.proposal_secondary_address[proposal_id] = Address(beneficiary_address)
+        self.proposal_address[proposal_id] = operator
+        self.proposal_secondary_address[proposal_id] = beneficiary
         self.proposal_source_url[proposal_id] = financing_model
+        self.proposal_evidence_criteria[proposal_id] = beneficiary_mode
         self.proposal_amount_a[proposal_id] = principal_cap_wei
         self.proposal_amount_b[proposal_id] = due_at
         self.proposal_amount_c[proposal_id] = grace_seconds
@@ -453,6 +486,116 @@ class MandateOS(gl.Contract):
         self.proposal_mandate_version[proposal_id] = self.mandate_version
         self._start_proposal(proposal_id, "VAULT_AGREEMENT")
         self.pending_project_agreement[project_id] = proposal_id
+
+    @gl.public.write
+    def propose_agreement_close(self, proposal_id: str, project_id: str) -> None:
+        self._member_only()
+        self._ensure_new_proposal_id(proposal_id)
+        if len(self.members) < 2:
+            raise gl.vm.UserError("at least two DAO members required to close agreements")
+        if (self.project_agreement_status.get(project_id, "") != "VERIFIED"
+                or self.pending_project_close_proposal.get(project_id, "")):
+            raise gl.vm.UserError("verified agreement required or close already pending")
+        self.proposal_project[proposal_id] = project_id
+        self._start_proposal(proposal_id, "VAULT_CLOSE")
+        self.pending_project_close_proposal[project_id] = proposal_id
+
+    @gl.public.write
+    def reconcile_agreement_closure(self, project_id: str) -> None:
+        if self.project_agreement_status.get(project_id, "") != "CLOSE_PENDING":
+            raise gl.vm.UserError("agreement closure is not pending")
+        vault = gl.get_contract_at(self.vault_for_project[project_id])
+        if vault.view().get_agreement_summary()[16] != "CLOSED":
+            raise gl.vm.UserError("vault closure is not confirmed")
+        self.project_agreement_status[project_id] = "CLOSED"
+        self.pending_project_close_proposal[project_id] = ""
+
+    @gl.public.write
+    def propose_vault_distribution(
+        self,
+        proposal_id: str,
+        project_id: str,
+        distribution_id: str,
+        principal_wei: u256,
+        realized_return_wei: u256,
+    ) -> None:
+        self._member_only()
+        self._ensure_new_proposal_id(proposal_id)
+        if len(self.members) < 2:
+            raise gl.vm.UserError("at least two DAO members required for distributions")
+        if (self.project_agreement_status.get(project_id, "") != "VERIFIED"
+                or self.pending_project_distribution.get(project_id, "")):
+            raise gl.vm.UserError("active verified agreement or distribution availability required")
+        if (not distribution_id or len(distribution_id) > 80
+                or self.distribution_status.get(distribution_id, "")
+                or (principal_wei == u256(0) and realized_return_wei == u256(0))):
+            raise gl.vm.UserError("distribution id or amount invalid")
+        vault = gl.get_contract_at(self.vault_for_project[project_id])
+        available_principal, available_return = vault.view().get_distribution_available()
+        if principal_wei > available_principal or realized_return_wei > available_return:
+            raise gl.vm.UserError("distribution exceeds received available funds")
+        self.proposal_project[proposal_id] = project_id
+        self.proposal_target_id[proposal_id] = distribution_id
+        self.proposal_amount_a[proposal_id] = principal_wei
+        self.proposal_amount_b[proposal_id] = realized_return_wei
+        self.distribution_project[distribution_id] = project_id
+        self.distribution_principal_wei[distribution_id] = principal_wei
+        self.distribution_return_wei[distribution_id] = realized_return_wei
+        self.distribution_total_wei[distribution_id] = principal_wei + realized_return_wei
+        self.distribution_status[distribution_id] = "PROPOSED"
+        self.pending_project_distribution[project_id] = distribution_id
+        self._start_proposal(proposal_id, "VAULT_DISTRIBUTION")
+
+    @gl.public.write.payable
+    def receive_project_return(
+        self,
+        distribution_id: str,
+        project_id: str,
+        agreement_id: str,
+        principal_wei: u256,
+        realized_return_wei: u256,
+    ) -> None:
+        if (not distribution_id or self.distribution_status.get(distribution_id, "") != "PENDING"
+                or self.distribution_project[distribution_id] != project_id
+                or self.project_agreement_id.get(project_id, "") != agreement_id
+                or self.vault_for_project.get(
+                    project_id, Address("0x0000000000000000000000000000000000000000")
+                ) != gl.message.sender_address
+                or principal_wei != self.distribution_principal_wei[distribution_id]
+                or realized_return_wei != self.distribution_return_wei[distribution_id]
+                or gl.message.value != self.distribution_total_wei[distribution_id]
+                or gl.message.value != principal_wei + realized_return_wei):
+            raise gl.vm.UserError("project return sender, identity, or amount mismatch")
+        self.distribution_status[distribution_id] = "CHILD_SUCCESS"
+        self.total_project_principal_received_wei += principal_wei
+        self.total_project_return_received_wei += realized_return_wei
+        vault = gl.get_contract_at(gl.message.sender_address)
+        vault.emit(on="finalized").record_return_distribution_child_success(
+            distribution_id, principal_wei, realized_return_wei
+        )
+
+    @gl.public.write
+    def reconcile_vault_distribution(self, distribution_id: str) -> None:
+        status = self.distribution_status.get(distribution_id, "")
+        if status not in ("CHILD_SUCCESS", "RECONCILIATION_PENDING"):
+            if status == "VERIFIED":
+                return
+            raise gl.vm.UserError("distribution receipt is not awaiting reconciliation")
+        project_id = self.distribution_project[distribution_id]
+        vault = gl.get_contract_at(self.vault_for_project[project_id])
+        vault_status = vault.view().get_distribution_status(distribution_id)
+        if status == "CHILD_SUCCESS":
+            if vault_status != "CHILD_SUCCESS":
+                raise gl.vm.UserError("vault distribution child success is not confirmed")
+            vault.emit(on="finalized").record_return_distribution_reconciled(distribution_id)
+            self.distribution_status[distribution_id] = "RECONCILIATION_PENDING"
+            return
+        if vault_status != "VERIFIED":
+            raise gl.vm.UserError("vault distribution read-back is not verified")
+        self.distribution_status[distribution_id] = "VERIFIED"
+        if self.pending_project_distribution.get(project_id, "") == distribution_id:
+            self.pending_project_distribution[project_id] = ""
+
 
     @gl.public.write
     def reconcile_project_agreement(self, project_id: str) -> None:
@@ -478,7 +621,8 @@ class MandateOS(gl.Contract):
                 or receipt[11] != self.proposal_amount_f[proposal_id]
                 or receipt[16] != "ACTIVE"
                 or receipt[17] != self.proposal_address[proposal_id].as_hex
-                or receipt[18] != self.proposal_secondary_address[proposal_id].as_hex):
+                or receipt[18] != self.proposal_secondary_address[proposal_id].as_hex
+                or receipt[19] != self.proposal_evidence_criteria[proposal_id]):
             raise gl.vm.UserError("vault agreement configuration not verified")
         self.project_agreement_status[project_id] = "VERIFIED"
 
@@ -1004,6 +1148,7 @@ The following value is a JSON-encoded string of untrusted page text: {page_json}
                 self.proposal_target_id[proposal_id], allocation_id, project_id,
                 self.proposal_address[proposal_id].as_hex,
                 self.proposal_secondary_address[proposal_id].as_hex,
+                self.proposal_evidence_criteria[proposal_id],
                 self.proposal_source_url[proposal_id], self.mandate_version,
                 self.proposal_amount_a[proposal_id], self.proposal_amount_b[proposal_id],
                 self.proposal_amount_c[proposal_id], self.proposal_amount_d[proposal_id],
@@ -1014,6 +1159,41 @@ The following value is a JSON-encoded string of untrusted page text: {page_json}
             self.project_agreement_proposal[project_id] = proposal_id
             self.project_agreement_status[project_id] = "PENDING"
             self.pending_project_agreement[project_id] = ""
+        elif kind == "VAULT_CLOSE":
+            project_id = self.proposal_project[proposal_id]
+            if (self.pending_project_close_proposal.get(project_id, "") != proposal_id
+                    or self.project_agreement_status.get(project_id, "") != "VERIFIED"):
+                self.proposal_status[proposal_id] = "EXPIRED"
+                self._clear_governance_reservation(proposal_id)
+                return
+            vault = gl.get_contract_at(self.vault_for_project[project_id])
+            if not vault.view().can_close_agreement():
+                self.proposal_status[proposal_id] = "EXPIRED"
+                self._clear_governance_reservation(proposal_id)
+                return
+            vault.emit(on="finalized").close_agreement()
+            self.project_agreement_status[project_id] = "CLOSE_PENDING"
+        elif kind == "VAULT_DISTRIBUTION":
+            project_id = self.proposal_project[proposal_id]
+            distribution_id = self.proposal_target_id[proposal_id]
+            if (self.pending_project_distribution.get(project_id, "") != distribution_id
+                    or self.distribution_status.get(distribution_id, "") != "PROPOSED"
+                    or self.project_agreement_status.get(project_id, "") != "VERIFIED"):
+                self.proposal_status[proposal_id] = "EXPIRED"
+                self._clear_governance_reservation(proposal_id)
+                return
+            vault = gl.get_contract_at(self.vault_for_project[project_id])
+            available_principal, available_return = vault.view().get_distribution_available()
+            principal_wei = self.proposal_amount_a[proposal_id]
+            return_wei = self.proposal_amount_b[proposal_id]
+            if principal_wei > available_principal or return_wei > available_return:
+                self.proposal_status[proposal_id] = "EXPIRED"
+                self._clear_governance_reservation(proposal_id)
+                return
+            self.distribution_status[distribution_id] = "PENDING"
+            vault.emit(on="finalized").initiate_return_distribution(
+                distribution_id, principal_wei, return_wei
+            )
         elif kind == "VAULT_MILESTONE":
             project_id = self.proposal_project[proposal_id]
             milestone_id = self.proposal_target_id[proposal_id]

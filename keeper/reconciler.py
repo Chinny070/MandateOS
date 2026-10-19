@@ -27,6 +27,13 @@ class TransferObservation:
     parent_status: str
     child_tx_id: str | None
     child_status: str | None
+    expected_source_address: str | None = None
+    expected_destination_address: str | None = None
+    observed_source_address: str | None = None
+    observed_destination_address: str | None = None
+    child_amount_wei: int | None = None
+    parent_child_link_verified: bool = False
+    recipient_kind: str = "IC"
     destination_balance_before_wei: int | None = None
     destination_balance_after_wei: int | None = None
     destination_recorded_amount_wei: int | None = None
@@ -59,9 +66,27 @@ def reconcile_transfer(observation: TransferObservation) -> Reconciliation:
         return Reconciliation(TransferState.CHILD_FAILED, "value-carrying child failed; protocol does not guarantee refund")
     if child_status not in {"FINALIZED", "SUCCESS", "SUCCEEDED"}:
         return Reconciliation(TransferState.UNKNOWN, "child status is not recognized")
-    if observation.destination_recorded_amount_wei is None:
+    if (not observation.expected_source_address or not observation.expected_destination_address
+            or not observation.observed_source_address or not observation.observed_destination_address
+            or observation.child_amount_wei is None):
+        return Reconciliation(TransferState.UNKNOWN, "complete child transaction fields are missing")
+    normalize = lambda value: value.lower()
+    if (normalize(observation.expected_source_address) != normalize(observation.observed_source_address)
+            or normalize(observation.expected_destination_address)
+                != normalize(observation.observed_destination_address)
+            or observation.child_amount_wei != observation.amount_wei):
+        return Reconciliation(TransferState.VALUE_AT_RISK, "child transaction does not match transfer intent")
+    if not observation.parent_child_link_verified:
+        return Reconciliation(
+            TransferState.UNKNOWN,
+            "receipt source and destination cannot be causally linked to the finalized parent",
+        )
+    if observation.recipient_kind not in {"IC", "EOA"}:
+        return Reconciliation(TransferState.UNKNOWN, "recipient kind is not recognized")
+    if observation.recipient_kind == "IC" and observation.destination_recorded_amount_wei is None:
         return Reconciliation(TransferState.CHILD_SUCCESS, "child succeeded; destination contract state not yet reconciled")
-    if observation.destination_recorded_amount_wei != observation.amount_wei:
+    if (observation.recipient_kind == "IC"
+            and observation.destination_recorded_amount_wei != observation.amount_wei):
         return Reconciliation(TransferState.VALUE_AT_RISK, "destination contract amount does not match transfer intent")
     before = observation.destination_balance_before_wei
     after = observation.destination_balance_after_wei

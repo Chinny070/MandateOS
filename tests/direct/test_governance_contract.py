@@ -83,7 +83,7 @@ def test_vault_agreement_and_milestone_setup_require_governance_and_reconciliati
                     "agreement-finance", "allocation-finance", "REPAYABLE", 1, 80,
                     int((BASE + timedelta(days=30)).timestamp()), 86400, 1, 0,
                     86400, 604800, 0, 0, 0, 0, 0, "ACTIVE", operator.as_hex,
-                    beneficiary.as_hex,
+                    beneficiary.as_hex, "IC",
                 )
             elif method == "get_milestone_summary":
                 result = ("DEFINED", 40, "Verified work completion")
@@ -107,7 +107,7 @@ def test_vault_agreement_and_milestone_setup_require_governance_and_reconciliati
     with direct_vm.prank(founder):
         treasury.propose_project_agreement(
             "agreement-vote", "project-finance", "agreement-finance",
-            "allocation-finance", operator.as_hex, beneficiary.as_hex, "REPAYABLE",
+            "allocation-finance", operator.as_hex, beneficiary.as_hex, "IC", "REPAYABLE",
             80, int((BASE + timedelta(days=30)).timestamp()), 86400, 1, 0, 0,
         )
     with direct_vm.prank(founder), direct_vm.expect_revert(
@@ -115,7 +115,7 @@ def test_vault_agreement_and_milestone_setup_require_governance_and_reconciliati
     ):
         treasury.propose_project_agreement(
             "agreement-vote-duplicate", "project-finance", "agreement-other",
-            "allocation-finance", operator.as_hex, beneficiary.as_hex, "REPAYABLE",
+            "allocation-finance", operator.as_hex, beneficiary.as_hex, "IC", "REPAYABLE",
             80, int((BASE + timedelta(days=30)).timestamp()), 86400, 1, 0, 0,
         )
     _approve_and_execute(direct_vm, treasury, "agreement-vote", [founder, bob])
@@ -158,6 +158,114 @@ def test_vault_agreement_and_milestone_setup_require_governance_and_reconciliati
     assert treasury.get_proposal_status("resolve-default") == "EXECUTED"
     assert treasury.pending_project_default_resolution.get("project-finance", "") == ""
     assert outbound[-1]["on"] == "finalized"
+
+
+def test_eoa_beneficiary_is_bound_by_governance_without_ic_receipt_contract(
+    direct_vm, direct_deploy
+):
+    founder = direct_vm.sender
+    direct_vm.warp(BASE.isoformat())
+    treasury = direct_deploy("contracts/mandate_os.py")
+    bob = create_address("eoa-beneficiary-voter")
+    _add_second_member(direct_vm, treasury, founder, bob)
+    from genlayer.py.types import Address
+
+    vault = Address(_hex(create_address("eoa-beneficiary-vault")))
+    treasury.vault_for_project["project-eoa"] = vault
+    treasury.allocation_project["allocation-eoa"] = "project-eoa"
+    treasury.allocation_status["allocation-eoa"] = "VERIFIED"
+    treasury.allocation_mandate_version["allocation-eoa"] = 1
+    treasury.funding_amount["allocation-eoa"] = 100
+    recipient = _hex(create_address("ordinary-eoa-recipient"))
+    with direct_vm.prank(founder):
+        treasury.propose_project_agreement(
+            "eoa-agreement-proposal", "project-eoa", "agreement-eoa",
+            "allocation-eoa", _hex(create_address("eoa-operator")), recipient,
+            "EOA", "GRANT", 100, 0, 0, 0, 0, 0,
+        )
+    assert treasury.proposal_kind["eoa-agreement-proposal"] == "VAULT_AGREEMENT"
+    assert treasury.proposal_secondary_address["eoa-agreement-proposal"].as_hex == recipient
+    assert treasury.proposal_evidence_criteria["eoa-agreement-proposal"] == "EOA"
+
+
+def test_member_governance_routes_return_distribution_and_agreement_closure(
+    direct_vm, direct_deploy
+):
+    founder = direct_vm.sender
+    direct_vm.warp(BASE.isoformat())
+    treasury = direct_deploy("contracts/mandate_os.py")
+    bob = create_address("distribution-voter")
+    _add_second_member(direct_vm, treasury, founder, bob)
+    from genlayer.py import calldata
+    from genlayer.py.public_abi import ResultCode
+    from genlayer.py.types import Address
+
+    vault = Address(_hex(create_address("distribution-vault")))
+    treasury.vault_for_project["project-distribution"] = vault
+    treasury.project_agreement_id["project-distribution"] = "agreement-distribution"
+    treasury.project_agreement_status["project-distribution"] = "VERIFIED"
+    dist_state = {"status": "CHILD_SUCCESS"}
+    agreement_state = {"status": "ACTIVE"}
+    outbound = []
+
+    def hook(vm, request):
+        if "CallContract" in request:
+            method = request["CallContract"]["calldata"]["method"]
+            if method == "get_distribution_available":
+                result = (40, 10)
+            elif method == "get_distribution_status":
+                result = dist_state["status"]
+            elif method == "can_close_agreement":
+                result = True
+            elif method == "get_agreement_summary":
+                result = (
+                    "agreement-distribution", "allocation-distribution", "REPAYABLE",
+                    1, 50, 0, 0, 1, 0, 86400, 604800, 0, 0, 0, 0, 0,
+                    agreement_state["status"], "0x" + "11" * 20,
+                    "0x" + "22" * 20, "EOA",
+                )
+            else:
+                raise AssertionError(f"unexpected vault view: {method}")
+            return bytes([int(ResultCode.RETURN)]) + calldata.encode(result)
+        if "PostMessage" in request:
+            outbound.append(request["PostMessage"])
+            return {"ok": None}
+        return None
+
+    direct_vm._gl_call_hook = hook
+    with direct_vm.prank(founder):
+        treasury.propose_vault_distribution(
+            "distribute-1", "project-distribution", "distribution-1", 30, 10
+        )
+    _approve_and_execute(direct_vm, treasury, "distribute-1", [founder, bob])
+    assert treasury.distribution_status["distribution-1"] == "PENDING"
+    assert outbound[-1]["on"] == "finalized"
+
+    direct_vm.value = 40
+    with direct_vm.prank(vault):
+        treasury.receive_project_return(
+            "distribution-1", "project-distribution", "agreement-distribution", 30, 10
+        )
+    direct_vm.value = 0
+    assert treasury.distribution_status["distribution-1"] == "CHILD_SUCCESS"
+    assert treasury.total_project_principal_received_wei == 30
+    assert treasury.total_project_return_received_wei == 10
+
+    treasury.reconcile_vault_distribution("distribution-1")
+    assert treasury.distribution_status["distribution-1"] == "RECONCILIATION_PENDING"
+    dist_state["status"] = "VERIFIED"
+    treasury.reconcile_vault_distribution("distribution-1")
+    assert treasury.distribution_status["distribution-1"] == "VERIFIED"
+    assert treasury.pending_project_distribution.get("project-distribution", "") == ""
+
+    with direct_vm.prank(founder):
+        treasury.propose_agreement_close("close-agreement", "project-distribution")
+    _approve_and_execute(direct_vm, treasury, "close-agreement", [founder, bob])
+    assert treasury.project_agreement_status["project-distribution"] == "CLOSE_PENDING"
+    assert outbound[-1]["on"] == "finalized"
+    agreement_state["status"] = "CLOSED"
+    treasury.reconcile_agreement_closure("project-distribution")
+    assert treasury.project_agreement_status["project-distribution"] == "CLOSED"
 
 
 def _warp(vm, delta: timedelta) -> None:

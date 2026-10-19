@@ -13,6 +13,12 @@ def observation(**changes):
         parent_status="FINALIZED",
         child_tx_id="child-fixture-only",
         child_status="FINALIZED",
+        expected_source_address="0x" + "11" * 20,
+        expected_destination_address="0x" + "22" * 20,
+        observed_source_address="0x" + "11" * 20,
+        observed_destination_address="0x" + "22" * 20,
+        child_amount_wei=25,
+        parent_child_link_verified=True,
         destination_balance_before_wei=100,
         destination_balance_after_wei=125,
         destination_recorded_amount_wei=25,
@@ -52,3 +58,34 @@ def test_missing_identity_and_ids_are_unknown():
     assert reconcile_transfer(observation(parent_tx_id=None)).state == TransferState.UNKNOWN
     assert reconcile_transfer(observation(transfer_id="")).state == TransferState.UNKNOWN
     assert reconcile_transfer(observation(amount_wei=0)).state == TransferState.UNKNOWN
+
+
+def test_child_receipt_without_parent_causality_is_never_verified():
+    result = reconcile_transfer(observation(parent_child_link_verified=False))
+    assert result.state == TransferState.UNKNOWN
+    assert "causally linked" in result.reason
+    assert not result.retry_permitted
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"observed_source_address": "0x" + "33" * 20},
+        {"observed_destination_address": "0x" + "44" * 20},
+        {"child_amount_wei": 24},
+    ],
+)
+def test_recipient_or_amount_mismatch_is_value_at_risk(changes):
+    result = reconcile_transfer(observation(**changes))
+    assert result.state == TransferState.VALUE_AT_RISK
+    assert not result.retry_permitted
+
+
+def test_eoa_requires_receipt_balance_and_parent_link():
+    values = observation(recipient_kind="EOA", destination_recorded_amount_wei=None)
+    assert reconcile_transfer(values).state == TransferState.VERIFIED
+    without_balance = observation(
+        recipient_kind="EOA", destination_recorded_amount_wei=None,
+        destination_balance_after_wei=None,
+    )
+    assert reconcile_transfer(without_balance).state == TransferState.CHILD_SUCCESS
