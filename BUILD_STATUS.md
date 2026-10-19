@@ -1,6 +1,6 @@
 # Build and deployment preparation status — 2026-10-19
 
-**Branch:** `codex/onchain-governance` | **Starting HEAD:** `60c4d84b83da4958463c79d95611ac483fe9e142` | **Final HEAD:** recorded below after push. `main` remains unchanged.
+**Branch:** `codex/onchain-governance` | **Starting HEAD:** `60c4d84b83da4958463c79d95611ac483fe9e142` | **Verified implementation commit:** `dd51811fa9d3a5c51a93890621d2fc545171a256`. `main` remains unchanged.
 **Verdicts:** **CONDITIONAL GO for an explicitly authorized, deployment-only StudioNet demonstration. NO-GO for a financial test or production.**
 **This task:** no MandateOS deployment, wallet unlock, transaction signature, contract write, or GEN transfer.
 
@@ -48,7 +48,7 @@ The script was not run against MandateOS because deployment, wallet unlock and s
 ## Final repository revision
 
 - Development branch: `codex/onchain-governance`.
-- Pushed commit: **to be filled after the verified commit is pushed**.
-- GitHub branch-head check: pending final push.
+- Verified implementation commit: `dd51811fa9d3a5c51a93890621d2fc545171a256`.
+- The final GitHub branch tip is reported from the post-push remote check; the status document is committed as part of this release sequence.
 
 See [LIVE_PROOFS.md](LIVE_PROOFS.md), [PREDEPLOYMENT_READINESS.md](docs/PREDEPLOYMENT_READINESS.md), and [TEST_MATRIX.md](docs/TEST_MATRIX.md) for the external reference evidence, exact run sequence and evidence classes.
