@@ -37,6 +37,8 @@ def test_comparator_receipt_parser_fails_closed_on_bad_schema_digest_or_status(
         ("status", "APPROVED", "validator assessment status is invalid"),
         ("facts", 1, "validator assessment fields are invalid"),
         ("publication", "2026-99-99", "validator publication field is invalid"),
+        ("publication", "2026-02-31", "validator publication field is invalid"),
+        ("publication", "1900-02-29", "validator publication field is invalid"),
     ):
         malformed = dict(good)
         malformed[field] = value
@@ -46,6 +48,8 @@ def test_comparator_receipt_parser_fails_closed_on_bad_schema_digest_or_status(
     extra["source"] = "member-provided"
     with direct_vm.expect_revert("validator assessment schema is invalid"):
         treasury._validate_evidence_assessment(json.dumps(extra))
+    leap_day = dict(good, publication="2024-02-29")
+    assert treasury._validate_evidence_assessment(json.dumps(leap_day))[2] == "2024-02-29"
 
 
 def test_vault_agreement_and_milestone_setup_require_governance_and_reconciliation(
@@ -134,11 +138,13 @@ def test_vault_agreement_and_milestone_setup_require_governance_and_reconciliati
     treasury.reconcile_vault_milestone("project-finance", "construction")
     assert treasury.project_milestone_status["project-finance|construction"] == "VERIFIED"
 
-    with direct_vm.prank(founder):
+    with direct_vm.prank(founder), direct_vm.expect_revert(
+        "challenge directly on ProjectVault so the challenge is atomic"
+    ):
         treasury.challenge_vault_milestone(
             "project-finance", "construction", "sha256:member-challenge"
         )
-    assert outbound[-1]["on"] == "finalized"
+    assert len(outbound) == 2  # agreement + milestone setup only
     milestone_state["status"] = "CHALLENGED"
     with direct_vm.prank(founder):
         treasury.propose_milestone_resolution(
@@ -358,8 +364,10 @@ def test_invalid_mandates_and_funding_without_finalized_authorization_are_denied
 
 def test_only_one_pending_vault_registration_can_claim_a_project(direct_vm, direct_deploy):
     founder = direct_vm.sender
+    bob = create_address("registration-second-member")
     direct_vm.warp(BASE.isoformat())
     treasury = direct_deploy("contracts/mandate_os.py")
+    _add_second_member(direct_vm, treasury, founder, bob)
     with direct_vm.prank(founder):
         treasury.propose_vault_registration(
             "register-project", "project-race", _hex(create_address("vault-first")), 100,
@@ -371,7 +379,10 @@ def test_only_one_pending_vault_registration_can_claim_a_project(direct_vm, dire
             "sha256:other-submission",
         )
     assert treasury.pending_vault_registration["project-race"] == "register-project"
-    _warp(direct_vm, timedelta(days=1, seconds=1))
+    voting_ends_at, _, _ = treasury.get_proposal_timing("register-project")
+    direct_vm.warp(
+        datetime.fromtimestamp(int(voting_ends_at) + 1, timezone.utc).isoformat()
+    )
     treasury.finalize_governance_proposal("register-project")
     assert treasury.pending_vault_registration["project-race"] == ""
     with direct_vm.prank(founder):
@@ -383,8 +394,10 @@ def test_only_one_pending_vault_registration_can_claim_a_project(direct_vm, dire
 
 def test_evidence_sources_reject_insecure_urls(direct_vm, direct_deploy):
     founder = direct_vm.sender
+    bob = create_address("evidence-source-second-member")
     direct_vm.warp(BASE.isoformat())
     treasury = direct_deploy("contracts/mandate_os.py")
+    _add_second_member(direct_vm, treasury, founder, bob)
     from genlayer.py.types import Address
 
     treasury.vault_for_project["project-source"] = Address(
@@ -498,8 +511,10 @@ def test_refund_requires_governance_reserves_amount_and_reconciles_authenticated
     direct_vm, direct_deploy
 ):
     founder = direct_vm.sender
+    bob = create_address("refund-second-member")
     direct_vm.warp(BASE.isoformat())
     treasury = direct_deploy("contracts/mandate_os.py")
+    _add_second_member(direct_vm, treasury, founder, bob)
     from genlayer.py import calldata
     from genlayer.py.public_abi import ResultCode
     from genlayer.py.types import Address
@@ -533,7 +548,7 @@ def test_refund_requires_governance_reserves_amount_and_reconciles_authenticated
         "refund exceeds unreserved vault balance"
     ):
         treasury.propose_refund("refund-proposal-2", "project-refund", "refund-2", 40)
-    _approve_and_execute(direct_vm, treasury, "refund-proposal", [founder])
+    _approve_and_execute(direct_vm, treasury, "refund-proposal", [founder, bob])
     assert treasury.get_refund_status("refund-1") == "PENDING"
     assert treasury.pending_refund_for_project["project-refund"] == 70
     assert child_messages[-1]["on"] == "finalized"
@@ -578,6 +593,39 @@ def test_timelocked_mandate_proposal_expires_if_not_executed(direct_vm, direct_d
     treasury.execute_governance_proposal("expire-mandate")
     assert treasury.get_proposal_status("expire-mandate") == "EXPIRED"
     assert treasury.mandate_version == 1
+
+
+def test_single_member_bootstrap_can_only_propose_second_member(direct_vm, direct_deploy):
+    founder = direct_vm.sender
+    direct_vm.warp(BASE.isoformat())
+    treasury = direct_deploy("contracts/mandate_os.py")
+
+    with direct_vm.prank(founder), direct_vm.expect_revert(
+        "at least two active DAO members required"
+    ):
+        treasury.propose_mandate_update("single-mandate", 1500, 2000, 20, 86400, 86400)
+    with direct_vm.prank(founder), direct_vm.expect_revert(
+        "at least two active DAO members required"
+    ):
+        treasury.propose_vault_registration(
+            "single-registration", "project-a", _hex(create_address("single-vault")),
+            100, "sha256:member-input",
+        )
+    with direct_vm.prank(founder), direct_vm.expect_revert(
+        "at least two active DAO members required"
+    ):
+        treasury.propose_evidence_source(
+            "single-evidence", "project-a", "https://example.org/evidence", "criteria",
+        )
+
+    # The bootstrap exception is limited to onboarding another voter.
+    second = create_address("second-bootstrap-member")
+    with direct_vm.prank(founder):
+        treasury.propose_member_add("add-second-member-bootstrap", _hex(second))
+    _approve_and_execute(
+        direct_vm, treasury, "add-second-member-bootstrap", [founder],
+    )
+    assert treasury.get_member_weight(_hex(second)) == 1
 
 
 def test_quorum_without_required_approval_rejects_governance_change(direct_vm, direct_deploy):

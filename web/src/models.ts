@@ -103,6 +103,18 @@ export function canAcknowledgeEoaPayout(
     && details.status === "NOT_ACKNOWLEDGED";
 }
 
+export function connectedWalletMatches(
+  expectedWallet: string,
+  chainId: string,
+  accounts: unknown,
+): boolean {
+  if (!expectedWallet || chainId.toLowerCase() !== "0xf22f" || !Array.isArray(accounts)) return false;
+  const active = accounts[0];
+  return typeof active === "string"
+    && /^0x[0-9a-fA-F]{40}$/.test(active)
+    && active.toLowerCase() === expectedWallet.toLowerCase();
+}
+
 export function formatWei(value: unknown): string {
   let amount: bigint;
   try {

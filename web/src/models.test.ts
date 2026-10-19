@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canAcknowledgeEoaPayout,
+  connectedWalletMatches,
   formatUtcTimestamp,
   formatWei,
   mapEoaSettlementState,
@@ -59,6 +60,16 @@ describe("onchain state mapping", () => {
     expect(canAck("0xBeneficiary", "0xf22f", "payment-1", ["VERIFIED", ...payout.slice(1)])).toBe(false);
     expect(canAck("0xBeneficiary", "0xf22f", "payment-1", payout, ["RECIPIENT_ACKNOWLEDGED", ...notAcknowledged.slice(1)])).toBe(false);
     expect(canAck("0xBeneficiary", "0xf22f", "payment-1", ["PENDING", "IC", "0xBeneficiary", 25n])).toBe(false);
+  });
+
+  it("rejects writes after disconnect, account switch, or network change", () => {
+    const beneficiary = `0x${"a".repeat(40)}`;
+    const sameAccountDifferentCase = `0x${"A".repeat(40)}`;
+    const other = `0x${"b".repeat(40)}`;
+    expect(connectedWalletMatches(beneficiary, "0xf22f", [sameAccountDifferentCase])).toBe(true);
+    expect(connectedWalletMatches(beneficiary, "0xf22f", [])).toBe(false);
+    expect(connectedWalletMatches(beneficiary, "0x1", [beneficiary])).toBe(false);
+    expect(connectedWalletMatches(beneficiary, "0xf22f", [other])).toBe(false);
   });
 
   it("formats wei and transaction timestamps without floating point", () => {

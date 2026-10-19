@@ -394,10 +394,14 @@ must return eligible=false. Source content JSON: {page}"""
     def challenge_milestone(
         self, milestone_id: str, challenger_address: str, evidence_digest: str
     ) -> None:
-        self._require_parent()
+        challenger = Address(challenger_address)
+        if challenger != gl.message.sender_address:
+            raise gl.vm.UserError("challenger must be the transaction sender")
+        parent = gl.get_contract_at(self.mandate_os)
+        if parent.view().get_member_weight(challenger.as_hex) == u256(0):
+            raise gl.vm.UserError("active DAO member required to challenge milestone")
         if self.milestone_status.get(milestone_id, "") != "CHALLENGEABLE":
             raise gl.vm.UserError("milestone is not challengeable")
-        challenger = Address(challenger_address)
         if challenger == self.agreement_operator:
             raise gl.vm.UserError("project operator cannot challenge own milestone")
         if (not evidence_digest or len(evidence_digest) > 128

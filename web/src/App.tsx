@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
 import { TransactionHashVariant } from "genlayer-js/types";
@@ -6,6 +6,7 @@ import {
   formatUtcTimestamp,
   formatWei,
   canAcknowledgeEoaPayout,
+  connectedWalletMatches,
   mapEoaSettlementState,
   mapRecipientAcknowledgment,
   mapTransactionState,
@@ -193,6 +194,7 @@ export function App() {
   const [projectIndex, setProjectIndex] = useState<IndexedProject[]>([]);
   const [vaultActivity, setVaultActivity] = useState<IndexedActivity[]>([]);
   const [indexError, setIndexError] = useState("");
+  const refreshGeneration = useRef(0);
 
   const readClient = useMemo(() => createClient({ chain: studionet }), []);
   const effectiveMemberAddress = handles.memberAddress || wallet;
@@ -217,6 +219,17 @@ export function App() {
   }, []);
 
   function update<K extends keyof Handles>(key: K, value: Handles[K]) {
+    if (key !== "transactionId") {
+      // A value read for the previous address/ID must never be presented as
+      // the current record or used to authorize a wallet write.
+      refreshGeneration.current += 1;
+      setDashboard({});
+      setProjectIndex([]);
+      setProposalIndex([]);
+      setVaultActivity([]);
+      setIndexError("");
+      setRefreshing(false);
+    }
     setHandles((current) => {
       const next = { ...current, [key]: value };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -264,6 +277,7 @@ export function App() {
   }
 
   async function refresh() {
+    const generation = ++refreshGeneration.current;
     setRefreshing(true);
     setMessage("");
     const next: DashboardData = {};
@@ -271,8 +285,10 @@ export function App() {
     const project = handles.projectId.trim();
     try {
       if (!ADDRESS.test(mandate)) {
-        setMessage("Enter a MandateOS Core address to read StudioNet state.");
-        setDashboard({});
+        if (generation === refreshGeneration.current) {
+          setMessage("Enter a MandateOS Core address to read StudioNet state.");
+          setDashboard({});
+        }
         return;
       }
       const coreReads: Promise<void>[] = [
@@ -299,6 +315,7 @@ export function App() {
         coreReads.push(query(next, "evidence", mandate, "get_evidence_receipt", [project]));
       }
       await Promise.all(coreReads);
+      if (generation !== refreshGeneration.current) return;
 
       let indexErrorMessage = "";
       if (typeof next.registeredVault?.ok !== "undefined" || ADDRESS.test(mandate)) {
@@ -314,9 +331,11 @@ export function App() {
               return { id, kind: String(summary[0] ?? "UNKNOWN"), status: String(summary[1] ?? "UNKNOWN"), votesFor: String(summary[2] ?? "0"), votesAgainst: String(summary[3] ?? "0") };
             })),
           ]);
+          if (generation !== refreshGeneration.current) return;
           setProjectIndex(projects);
           setProposalIndex(proposals);
         } catch (error) {
+          if (generation !== refreshGeneration.current) return;
           indexErrorMessage = error instanceof Error ? error.message : "Contract indexes could not be read.";
           setProjectIndex([]);
           setProposalIndex([]);
@@ -360,6 +379,7 @@ export function App() {
           vaultReads.push(query(next, "revenue", vault, "get_revenue_period", [handles.revenuePeriodId.trim()]));
         }
         await Promise.all(vaultReads);
+        if (generation !== refreshGeneration.current) return;
         try {
           const indexSpecs = [
             ["milestone", "get_milestone_count", "get_milestone_id_at"],
@@ -381,18 +401,37 @@ export function App() {
               return { kind, id, status };
             }));
           }));
+          if (generation !== refreshGeneration.current) return;
           setVaultActivity(entries.flat());
         } catch (error) {
+          if (generation !== refreshGeneration.current) return;
           indexErrorMessage = [indexErrorMessage, error instanceof Error ? error.message : "Vault indexes could not be read."].filter(Boolean).join(" · ");
           setVaultActivity([]);
         }
       }
+      if (generation !== refreshGeneration.current) return;
       setIndexError(indexErrorMessage);
       setDashboard(next);
       setMessage("Read latest finalized contract state from StudioNet. No writes were submitted.");
     } finally {
-      setRefreshing(false);
+      if (generation === refreshGeneration.current) setRefreshing(false);
     }
+  }
+
+  async function requireCurrentStudioNetWallet(): Promise<string> {
+    if (!window.ethereum || !wallet) throw new Error("Connect a StudioNet wallet first.");
+    const [chainValue, accounts] = await Promise.all([
+      window.ethereum.request({ method: "eth_chainId" }),
+      window.ethereum.request({ method: "eth_accounts" }),
+    ]);
+    const chain = String(chainValue ?? "").toLowerCase();
+    setWalletChainId(chain);
+    if (chain !== "0xf22f") throw new Error("Switch the wallet to StudioNet (chain ID 61999) before signing.");
+    if (!connectedWalletMatches(wallet, chain, accounts)) {
+      setWallet(Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : "");
+      throw new Error("The active wallet changed or disconnected. Reconnect before signing.");
+    }
+    return wallet;
   }
 
   async function connectWallet() {
@@ -422,10 +461,8 @@ export function App() {
       if (!canAcknowledgeEoaPayout(wallet, walletChainId, handles.paymentId.trim(), effectiveVault, payout, acknowledgment)) {
         throw new Error("The connected StudioNet account must match the unacknowledged EOA beneficiary.");
       }
-      const chain = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
-      setWalletChainId(chain);
-      if (chain !== "0xf22f") throw new Error("Switch the wallet to StudioNet (chain ID 61999) before signing.");
-      if (wallet.toLowerCase() !== String(payout?.[2] ?? "").toLowerCase()) {
+      const account = await requireCurrentStudioNetWallet();
+      if (account.toLowerCase() !== String(payout?.[2] ?? "").toLowerCase()) {
         throw new Error("The connected wallet no longer matches the authorized payment beneficiary.");
       }
 
@@ -433,11 +470,11 @@ export function App() {
       setAcknowledgmentSubmitting(true);
       const writer: any = createClient({
         chain: studionet,
-        account: wallet as `0x${string}`,
+        account: account as `0x${string}`,
         provider: window.ethereum,
       });
       const call = {
-        account: wallet as `0x${string}`,
+        account: account as `0x${string}`,
         address: effectiveVault as `0x${string}`,
         functionName: "acknowledge_eoa_payout_received",
         args: [handles.paymentId.trim(), amountWei],
@@ -486,15 +523,14 @@ export function App() {
       if (!ADDRESS.test(handles.mandateAddress) || !handles.proposalId.trim()) {
         throw new Error("A MandateOS address and proposal ID are required.");
       }
-      const chain = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
-      if (chain !== "0xf22f") throw new Error("Wallet network changed; select StudioNet (61999) before voting.");
+      const account = await requireCurrentStudioNetWallet();
       const writer: any = createClient({
         chain: studionet,
-        account: wallet as `0x${string}`,
+        account: account as `0x${string}`,
         provider: window.ethereum,
       });
       const call = {
-        account: wallet as `0x${string}`,
+        account: account as `0x${string}`,
         address: handles.mandateAddress as `0x${string}`,
         functionName: "vote",
         args: [handles.proposalId.trim(), support],
@@ -516,14 +552,29 @@ export function App() {
     try {
       if (!window.ethereum || !wallet) throw new Error("Connect a StudioNet wallet first.");
       if (!ADDRESS.test(handles.mandateAddress)) throw new Error("A MandateOS Core address is required.");
-      const chain = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
-      if (chain !== "0xf22f") throw new Error("Wallet network changed; select StudioNet (61999) before submitting.");
-      const writer: any = createClient({ chain: studionet, account: wallet as `0x${string}`, provider: window.ethereum });
-      const call = { account: wallet as `0x${string}`, address: handles.mandateAddress as `0x${string}`, functionName, args };
+      const account = await requireCurrentStudioNetWallet();
+      const writer: any = createClient({ chain: studionet, account: account as `0x${string}`, provider: window.ethereum });
+      const call = { account: account as `0x${string}`, address: handles.mandateAddress as `0x${string}`, functionName, args };
       const estimate = await writer.estimateTransactionFeesForWrite(call);
       const txId = await writer.writeContract({ ...call, fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
       update("transactionId", String(txId));
       setMessage(`${description} submitted: ${txId}. Submission is not confirmation; inspect final status below.`);
+      await inspectTransaction(String(txId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `${description} failed.`);
+    }
+  }
+
+  async function submitVaultMemberCall(functionName: string, args: unknown[], description: string) {
+    try {
+      if (!ADDRESS.test(effectiveVault)) throw new Error("A ProjectVault address is required.");
+      const account = await requireCurrentStudioNetWallet();
+      const writer: any = createClient({ chain: studionet, account: account as `0x${string}`, provider: window.ethereum });
+      const call = { account: account as `0x${string}`, address: effectiveVault as `0x${string}`, functionName, args };
+      const estimate = await writer.estimateTransactionFeesForWrite(call);
+      const txId = await writer.writeContract({ ...call, fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
+      update("transactionId", String(txId));
+      setMessage(`${description} submitted directly to ProjectVault: ${txId}. The onchain challenge is atomic with this transaction; inspect its finalized result below.`);
       await inspectTransaction(String(txId));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `${description} failed.`);
@@ -556,7 +607,7 @@ export function App() {
       setMessage("Enter the project ID, milestone ID and your evidence digest.");
       return;
     }
-    await submitMemberCall("challenge_vault_milestone", [projectId, milestoneId, digest], "Milestone challenge");
+    await submitVaultMemberCall("challenge_milestone", [milestoneId, wallet, digest], "Milestone challenge");
     update("projectId", projectId);
     update("milestoneId", milestoneId);
   }
@@ -809,7 +860,7 @@ export function App() {
               <>
                 <div className="two-column compact-grid">
                   <DataPanel title="Payment intent" result={{ ok: true, value: {
-                    "Project name / ID": handles.projectId || acknowledgmentRecord.projectId || "Not supplied",
+                    "Project ID": acknowledgmentRecord.projectId || "Unavailable",
                     "ProjectVault address": effectiveVault || acknowledgmentRecord.projectVault,
                     "Payment ID": handles.paymentId,
                     "Expected receiving wallet": String(payoutRecord[2] ?? ""),

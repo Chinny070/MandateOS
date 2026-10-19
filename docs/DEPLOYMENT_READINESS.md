@@ -2,6 +2,8 @@
 
 **Verdict: NOT READY FOR PRODUCTION. Do not deploy or transfer GEN until the open release blockers are resolved and the user explicitly approves the operation.** This document describes a runbook; it is not deployment authorization.
 
+The 2026-10-19 source audit found and fixed a milestone challenge race, a single-member governance path, and permissive calendar-date validation. See [RELEASE_READINESS_AUDIT.md](RELEASE_READINESS_AUDIT.md) for severity, tests, and remaining limitations. Local verification does not change the verdict.
+
 ## Audit summary
 
 The two contract sources were reviewed for payable deposits, funding, milestone payouts, refunds, repayments, revenue receipts and return distributions. The reviewed paths keep contractual terms separate from native amounts actually received, bind outgoing value to unique IDs and fixed destinations, reserve pending or uncertain amounts, and perform the corresponding state transition before emitting external value messages. ProjectVault checks available received principal/returns against existing obligations and reservations before distribution. MandateOS includes allocation reservations in spendable treasury calculations. Existing Direct Mode coverage exercises duplicate IDs, unauthorized callers, concurrent reservations, repayment categorization, replay attempts and uncertain payout states.
@@ -61,6 +63,23 @@ The following is an example after deployment and governance limits have been rev
 - Do not use an EOA beneficiary in this runbook while the receipt relationship is unavailable. Keep any uncertain EOA payment reserved and do not retry it.
 - Publish only raw, independently checked transaction records and exact balance snapshots in `LIVE_PROOFS.md`. Local tests and imported keeper JSON are not live evidence.
 
+### Minimal first demonstration and fee controls
+
+Run this only after a separately approved deployment. This is the smallest useful governance and escrow demonstration, not an authorization to transact:
+
+1. Use two distinct, dedicated StudioNet member wallets and a separate project operator wallet. Verify `eth_chainId == 0xf22f` for every signer. Bootstrap the second DAO member through the documented member-add proposal; then use both member wallets for a vault registration proposal and a minimal grant agreement. Never reuse a single wallet as two voters.
+2. Deploy Core, then one ProjectVault configured with that Core address and a unique project ID. Before funding, read back both addresses, bindings, active member weights, proposal quorum/deadlines, mandate limits and pause state from finalized contract views.
+3. Use a demonstration cap of at most **0.01 GEN (10,000,000,000,000,000 wei)** for the first deposit/funding cycle, or the lower amount approved by the DAO. Confirm the active cap and reserve leave enough unencumbered GEN for fees and required operations.
+4. For each signed transaction, request the current SDK fee estimate for that exact call. Review the proposed fee value and distribution with the wallet signer; keep message/child execution budgets separate from the payable GEN amount. Do not hardcode a fee profile or reuse a quote after changing method, calldata, contract code or network state. If the pinned SDK cannot quote a call, or its required fee exceeds the amount approved by the signer, stop and obtain a reviewed fee configuration before proceeding.
+5. Record the parent transaction ID and inspect its lifecycle until final. For each internal child, record the exact triggered ID and inspect child finality, execution result, recipient state, contract state and before/after balances. A successful parent alone does not authorize continuing. If a receipt, child ID, result, destination amount or balance is unknown or inconsistent, stop; leave the reservation/value-at-risk in place and do not resend.
+6. For milestone delivery, use one tiny milestone amount within the 0.01 GEN cap and a compatible IC beneficiary whose receipt interface has been independently reviewed. A Direct Mode stub is not a compatible live recipient. Require a finalized child, authenticated callback and read-back before treating the IC payout as verified. Do not use EOA payout as the first settlement demonstration.
+7. Make at most one tiny payable repayment with a unique ID. Verify actual received amount, oldest-installment allocation and separate realized return. Do not close the agreement, refund or distribute until every prior child is reconciled. Exercise refund/distribution only as a separate approved run with a fresh ID and fresh fee quote.
+8. Archive signed transaction IDs (never private keys), lifecycle and child records, exact fee values/distributions, source hashes, code hashes, addresses, timestamps, and independent balance snapshots. A beneficiary acknowledgment is recorded only as an attestation, never as proof of EOA settlement.
+
+**Immediate stop conditions:** chain ID mismatch; wallet/contract address mismatch; stale or unavailable fee estimate; proposal has fewer than two real voters; proposal or evidence expired; unexpected contract state; challenge unresolved; accepted-but-not-final transaction; any failed or missing child; source/destination/amount mismatch; inconsistent balance; RPC/keeper outage; or unresolved value-at-risk. Do not deploy onward or send another transaction to work around a stop condition. Preserve the exact IDs and logs for incident review.
+
+**Recovery limits:** GenLayer's internal messages are asynchronous and a failed value-carrying child is not automatically refunded. Unknown or failed value is not retried; reservations can remain locked indefinitely. Stop the demonstration and seek protocol-supported recovery/reconciliation before additional money moves. No administrator or keeper override is available. EOA transfers remain unsuitable for production until an independent causal receipt is supported.
+
 ## Release blockers and next milestone
 
 1. A supported protocol/RPC record must causally connect a finalized parent payment intent to the exact external EOA GEN transfer and independently establish destination, amount, execution success and finality.
@@ -68,4 +87,4 @@ The following is an example after deployment and governance limits have been rev
 3. Complete external security review and document membership/upgrade/incident procedures.
 4. Confirm that the dashboard can query deployed contracts and verify all displayed states against finalized records.
 
-Until then, the correct release verdict remains **NOT READY**; no deployment address or financial settlement should be claimed.
+Until then, the correct release verdict remains **NO-GO**; no deployment address or financial settlement should be claimed. The dynamic SDK estimate path is code-reviewed but not verified against live StudioNet fee distribution or child-message costs.

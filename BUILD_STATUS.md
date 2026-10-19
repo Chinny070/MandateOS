@@ -1,40 +1,31 @@
 # Build status — 2026-10-19
 
-**Verified implementation commit:** `71c9bc7287f3986ae6f1675d9e0f2d1d8648da8a` on `codex/onchain-governance`, based on previously verified branch commit `799be9f09fa08681732db74a1e18c39aa7db5a2f`. This update records a wallet-authenticated EOA beneficiary acknowledgment as a separate attestation. `main` remains unchanged at `4b446f04bb811c985230dee55b904e73412438b1`.
+**Audit branch:** `codex/onchain-governance`; work started from `729f53ba809d16a4c5d7e5f0e082fd5d0cfdad8d`. The branch HEAD is the authoritative source for this report. `main` was not modified.
 
-| Gate / stage | State | Verified evidence and remaining work |
+**Release verdict: NO-GO for deployment or GEN movement.** Local checks pass, but StudioNet validator execution, fee allocation, and real child settlement have not been verified; EOA external settlement remains unprovable through the supported receipt interface. No deployment, transaction signing, or GEN transfer was performed.
+
+| Area | State | Evidence and remaining work |
 |---|---|---|
-| Gate 0 — environment and local validation | PASS | Python compilation, full pytest, both GenVM lint runs, frontend typecheck/tests/build pass. Raw JSON-RPC and the installed GenLayerPY StudioNet client previously returned `0xf22f` (61999). The StudioNet check was read-only. |
-| Gate 1 — custody and settlement | PARTIAL | Source audit found no demonstrated double-spend or authorization defect requiring a core ledger rewrite. EOA beneficiaries can now sign an acknowledgment bound to ProjectVault, project, payment ID, expected recipient and exact amount. It is stored separately and does not change payout state, reservation, unsettled count, refund/closure rights or finance accounting. No live contract, acknowledgment, or transfer proof exists. EOA settlement remains unverified and production-disabled. |
-| Gate 2 — governance and risk | PARTIAL | Existing governance/mandate/authorization implementation and Direct Mode regressions remain. New bounded indexes expose proposals and registered projects; Direct Mode covers current list views. Local test execution does not prove validator consensus. |
-| Gate 3 — native evidence and consensus | PARTIAL | Evidence, provenance and freshness paths exist locally. No live validator assessment, Equivalence Principle judgment, or validator agreement has been verified. |
-| Gate 4 — ProjectVault financing | PARTIAL | Agreement, milestone, challenge, payout, refund, repayment, return-distribution, default and closure paths remain. Local tests do not establish child finality or actual settlement. Vault indexes now expose bounded discovery for milestone, payout, refund, repayment, distribution and revenue records. |
-| Stage 1 — GEN custody review | REVIEWED LOCALLY | Reviewed payable deposit/funding/repayment/revenue paths and milestone payout/refund/return-distribution paths against GenLayer's finalized-message model. No accounting or authorization defect was demonstrated in the reviewed code. Review is not a formal audit or live child execution proof. |
-| Stage 2 — keeper | PARTIAL | Read-only, restart-safe SQLite observations, exact-intent reconciliation, internal child monitoring, balance samples, alerts and reports. For EOA watches it archives the ProjectVault acknowledgment view in a `BENEFICIARY_ATTESTATION` audit event, while leaving transfer state `UNKNOWN`. It has no signer/spending key, arbitrary treasury authority, blind retry or write-based maintenance. |
-| Stage 3 — dashboard | PARTIAL | Responsive React/TypeScript/Vite dashboard reads latest-final Core and vault state. It discovers bounded recent records and offers wallet-signed voting, milestone proposal, challenge, and now **Confirm GEN Received** for an initiated EOA payout. The acknowledgment form requires matching StudioNet account and payout details, waits for transaction finality, then reads the latest-final record. It labels acknowledgment separately from settlement, which remains unverified. |
-| Gate 6 — deployment readiness | BLOCKED | No deployment or full StudioNet fund-cycle proof. External EOA receipt linkage, live validator evidence, independent audit, live async failure/recovery and approved operational controls remain. |
+| Local build and regressions | PASS | 116 Python tests; 7 frontend tests; Python compilation; two GenVM lint runs (3 checks each); frontend typecheck and production build pass. |
+| Governance | PARTIAL | Direct Mode tests cover snapshots, voting, quorum, timelocks and now reject sensitive solo-member proposals. There is no live two-wallet governance run. |
+| Cross-contract funding and escrow | PARTIAL | Source and Direct Mode accounting checks cover reservations, unique IDs, authentication and state-before-emission. Live value-bearing child behavior, failure recovery and balances are unverified. |
+| Milestone challenges | HARDENED LOCALLY | Challenge now authenticates the EOA and current Core membership and transitions the vault atomically. The former asynchronous Core wrapper reverts. Direct Mode regression closes the demonstrated payout race. |
+| Evidence assessment | PARTIAL | Schema checks now reject impossible ISO publication dates. Live `gl.nondet.web` and Equivalence Principle consensus, redirects/DNS defenses, snapshots and contradictory-source behavior remain unverified or incomplete. |
+| Fees and SDK | NOT VERIFIED LIVE | Frontend uses GenLayerJS dynamic fee estimation and submits `distribution` plus `feeValue`; no StudioNet transaction or measured fee/profile verification was performed. The local GenLayer CLI executable is unavailable. |
+| IC payout | PARTIAL | Authenticated receipt/read-back path exists; no live compatible beneficiary IC or child settlement has been exercised. |
+| EOA payout | BLOCKED | Beneficiary acknowledgment is a separate attestation. Supported APIs do not establish a causal external transfer receipt; status remains UNKNOWN/value-at-risk, with no retry or override. |
+| Keeper and dashboard | PARTIAL | Keeper remains read-only/noncustodial. Dashboard rejects stale async reads after key changes and rechecks active account and chain before writes. Both remain local because no contract deployment exists. |
+| StudioNet | READ-ONLY IDENTITY CHECK ONLY | Previously verified endpoint chain ID `0xf22f` (61999); this audit did not submit contract or financial transactions. |
 
-## Verification results for implementation commit `71c9bc7287f3986ae6f1675d9e0f2d1d8648da8a`
+## Commands and results
 
 - `python -m compileall -q contracts reference keeper tests` — passed.
-- `python -m pytest -q` — **114 passed** (109-test baseline retained and 5 new acknowledgment/keeper regression cases).
-- `genvm-lint contracts/mandate_os.py` — passed, 3 checks.
-- `genvm-lint contracts/project_vault.py` — passed, 3 checks.
+- `python -m pytest -q` — **116 passed**.
+- `PYTHONIOENCODING=utf-8 genvm-lint contracts/mandate_os.py` — passed, 3 checks.
+- `PYTHONIOENCODING=utf-8 genvm-lint contracts/project_vault.py` — passed, 3 checks.
+- `cd web; npm test` — **7 passed**.
 - `cd web; npm run typecheck` — passed.
-- `cd web; npm test` — **6 passed** (4 existing tests retained and 2 acknowledgment state tests).
-- `cd web; npm run build` — passed; Vite reports a non-blocking main-chunk warning (785.85 kB minified, 190.38 kB gzip).
-- `git diff --check` — passed before commit.
-- Secret-pattern scan of changed source/docs/tests/frontend — no credential patterns found.
+- `cd web; npm run build` — passed; Vite reports a non-blocking main chunk of 786.97 kB minified (190.63 kB gzip).
+- `git diff --check` — passed before documentation updates; rerun before commit.
 
-Both GenVM lints passed with `PYTHONIOENCODING=utf-8` (3 checks each). The Windows default `cp1252` console cannot print the linter's checkmark; this is a console encoding issue, not a contract lint failure.
-
-All Python and frontend tests are local. They do not submit to StudioNet. The EOA acknowledgment and keeper report coverage are local Direct Mode/adapter tests, not a live beneficiary transaction. No local fixture, keeper report or dashboard index is live deployment/settlement evidence.
-
-## Release blockers and next milestone
-
-1. GenLayer or its RPC/SDK must expose independently checkable evidence linking a finalized parent payment intent to the exact successful external EOA transfer, destination and amount. Until then EOA settlement remains unavailable for production; no retry or operator override is allowed.
-2. After explicit approval, execute and document a small IC-recipient StudioNet fund cycle, including exact parent/child IDs, finality, result and before/after balances; exercise failure, unknown and restart recovery.
-3. Complete independent contract/security review and document membership, upgrade and incident procedures.
-4. Verify the deployed dashboard against real finalized contract state; do not populate missing data with fixtures.
-
-The deployment sequence and small-value verification runbook are in [docs/DEPLOYMENT_READINESS.md](docs/DEPLOYMENT_READINESS.md). They are not deployment authorization.
+Local tests and Direct Mode do not prove validator agreement, deployment, child finality, GEN settlement, or live wallet governance. See [docs/RELEASE_READINESS_AUDIT.md](docs/RELEASE_READINESS_AUDIT.md), [docs/DEPLOYMENT_READINESS.md](docs/DEPLOYMENT_READINESS.md), and [LIVE_PROOFS.md](LIVE_PROOFS.md).

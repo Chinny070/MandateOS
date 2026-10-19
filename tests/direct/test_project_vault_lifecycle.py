@@ -422,8 +422,9 @@ def test_challenged_milestone_expiry_never_authorizes_payment(direct_vm, direct_
     vault.milestone_status["build"] = "CHALLENGEABLE"
     vault.milestone_challenge_ends_at["build"] = int((BASE + timedelta(seconds=60)).timestamp())
     challenger = create_address("milestone-challenger")
-    with direct_vm.prank(parent):
+    with direct_vm.prank(challenger):
         vault.challenge_milestone("build", _hex(challenger), "sha256:challenge")
+    assert vault.get_milestone_status("build") == "CHALLENGED"
     with direct_vm.expect_revert("milestone dispute window is active"):
         vault.expire_milestone_challenge("build")
     direct_vm.warp((BASE + timedelta(seconds=181)).isoformat())
@@ -434,6 +435,53 @@ def test_challenged_milestone_expiry_never_authorizes_payment(direct_vm, direct_
         "payout id or milestone authorization invalid"
     ):
         vault.initiate_milestone_payout("payment-after-expiry", "build")
+
+
+def test_milestone_challenge_authenticates_member_and_locks_payout_atomically(
+    direct_vm, direct_deploy
+):
+    direct_vm.warp(BASE.isoformat())
+    vault, parent, operator, _ = _make_vault(direct_vm, direct_deploy, challenge_seconds=60)
+    with direct_vm.prank(parent):
+        vault.define_milestone("atomic-challenge", 40, "Verified work")
+    vault.milestone_status["atomic-challenge"] = "CHALLENGEABLE"
+    vault.milestone_challenge_ends_at["atomic-challenge"] = int(
+        (BASE + timedelta(seconds=60)).timestamp()
+    )
+    member = create_address("atomic-milestone-challenger")
+    attacker = create_address("atomic-milestone-attacker")
+    from genlayer.py import calldata
+    from genlayer.py.public_abi import ResultCode
+
+    def member_hook(vm, request):
+        if "CallContract" in request:
+            call = request["CallContract"]["calldata"]
+            if call["method"] != "get_member_weight":
+                raise AssertionError(f"unexpected parent view: {call}")
+            result = 1 if call["args"][0].lower() == _hex(member).lower() else 0
+            return bytes([int(ResultCode.RETURN)]) + calldata.encode(result)
+        return None
+
+    direct_vm._gl_call_hook = member_hook
+    with direct_vm.prank(attacker), direct_vm.expect_revert(
+        "active DAO member required to challenge milestone"
+    ):
+        vault.challenge_milestone("atomic-challenge", _hex(attacker), "sha256:challenge")
+    with direct_vm.prank(member), direct_vm.expect_revert(
+        "challenger must be the transaction sender"
+    ):
+        vault.challenge_milestone("atomic-challenge", _hex(attacker), "sha256:challenge")
+    with direct_vm.prank(member):
+        vault.challenge_milestone("atomic-challenge", _hex(member), "sha256:challenge")
+
+    assert vault.get_milestone_status("atomic-challenge") == "CHALLENGED"
+    with direct_vm.expect_revert("milestone is not awaiting challenge expiry"):
+        vault.finalize_milestone("atomic-challenge")
+    with direct_vm.prank(parent), direct_vm.expect_revert(
+        "payout id or milestone authorization invalid"
+    ):
+        vault.initiate_milestone_payout("atomic-payout", "atomic-challenge")
+    assert vault.milestone_obligations_wei == 40
 
 
 def test_default_challenge_and_resolution_are_bounded(direct_vm, direct_deploy):

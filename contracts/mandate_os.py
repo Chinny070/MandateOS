@@ -13,6 +13,25 @@ import json
 from genlayer import *
 
 
+def _valid_iso_publication_date(value: str) -> bool:
+    if (not isinstance(value, str) or len(value) != 10
+            or value[4] != "-" or value[7] != "-"
+            or not value[:4].isdigit() or not value[5:7].isdigit()
+            or not value[8:10].isdigit()):
+        return False
+    year = int(value[:4])
+    month = int(value[5:7])
+    day = int(value[8:10])
+    if year < 1 or month < 1 or month > 12 or day < 1:
+        return False
+    if month == 2:
+        leap_year = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+        return day <= (29 if leap_year else 28)
+    if month in (4, 6, 9, 11):
+        return day <= 30
+    return day <= 31
+
+
 class MandateOS(gl.Contract):
     # Bootstrap governance rules are intentionally fixed in code for this
     # iteration. A later proposal may tighten the mandate within these bounds.
@@ -157,6 +176,13 @@ class MandateOS(gl.Contract):
         if self.member_weight.get(gl.message.sender_address, u256(0)) == u256(0):
             raise gl.vm.UserError("active DAO member required")
 
+    def _require_multi_member_governance(self) -> None:
+        # Keep the initial single-member bootstrap narrow: that member may
+        # propose adding a second member, but cannot self-approve policy or
+        # financial-control changes against a one-person voting snapshot.
+        if len(self.members) < 2:
+            raise gl.vm.UserError("at least two active DAO members required")
+
     def _proposal_key(self, proposal_id: str, member: Address) -> str:
         return proposal_id + "|" + member.as_hex
 
@@ -230,15 +256,7 @@ class MandateOS(gl.Contract):
             raise gl.vm.UserError("validator evidence digest is invalid")
         if (not isinstance(publication, str) or len(publication) > 10
                 or (publication != "UNKNOWN"
-                    and (len(publication) != 10 or publication[4] != "-"
-                         or publication[7] != "-"
-                         or not publication[:4].isdigit()
-                         or not publication[5:7].isdigit()
-                         or not publication[8:10].isdigit()
-                         or int(publication[5:7]) < 1
-                         or int(publication[5:7]) > 12
-                         or int(publication[8:10]) < 1
-                         or int(publication[8:10]) > 31))):
+                    and not _valid_iso_publication_date(publication))):
             raise gl.vm.UserError("validator publication field is invalid")
         if (not isinstance(reason, str) or not reason or len(reason) > 80
                 or not isinstance(facts, str) or len(facts) > 600):
@@ -331,6 +349,7 @@ class MandateOS(gl.Contract):
         evidence_max_age_seconds: u256,
     ) -> None:
         self._member_only()
+        self._require_multi_member_governance()
         self._ensure_new_proposal_id(proposal_id)
         if max_project_exposure_bps == u256(0) or max_project_exposure_bps > u256(2000):
             raise gl.vm.UserError("project exposure outside bootstrap bounds")
@@ -361,6 +380,7 @@ class MandateOS(gl.Contract):
         evidence_digest: str,
     ) -> None:
         self._member_only()
+        self._require_multi_member_governance()
         self._ensure_new_proposal_id(proposal_id)
         if (not project_id or len(project_id) > 80
                 or project_id in self.vault_for_project
@@ -395,6 +415,7 @@ class MandateOS(gl.Contract):
         self, proposal_id: str, project_id: str, source_url: str, eligibility_criteria: str
     ) -> None:
         self._member_only()
+        self._require_multi_member_governance()
         self._ensure_new_proposal_id(proposal_id)
         if project_id not in self.vault_for_project:
             raise gl.vm.UserError("project is not governance registered")
@@ -674,13 +695,8 @@ class MandateOS(gl.Contract):
         self, project_id: str, milestone_id: str, evidence_digest: str
     ) -> None:
         self._member_only()
-        if self.project_milestone_status.get(project_id + "|" + milestone_id, "") != "VERIFIED":
-            raise gl.vm.UserError("verified vault milestone required")
-        if not evidence_digest or len(evidence_digest) > 128:
-            raise gl.vm.UserError("milestone challenge evidence digest required")
-        vault = gl.get_contract_at(self.vault_for_project[project_id])
-        vault.emit(on="finalized").challenge_milestone(
-            milestone_id, gl.message.sender_address.as_hex, evidence_digest
+        raise gl.vm.UserError(
+            "challenge directly on ProjectVault so the challenge is atomic"
         )
 
     @gl.public.write
@@ -778,11 +794,7 @@ The following value is a JSON-encoded string of untrusted page text: {page_json}
                 if not isinstance(publication, str) or len(publication) > 16:
                     publication = "UNKNOWN"
                 if (publication != "UNKNOWN"
-                        and (len(publication) != 10 or publication[4] != "-"
-                             or publication[7] != "-"
-                             or not publication[:4].isdigit()
-                             or not publication[5:7].isdigit()
-                             or not publication[8:10].isdigit())):
+                        and not _valid_iso_publication_date(publication)):
                     publication = "UNKNOWN"
                 if not isinstance(reason, str) or len(reason) > 80:
                     reason = "inconclusive"
@@ -913,6 +925,7 @@ The following value is a JSON-encoded string of untrusted page text: {page_json}
         self, proposal_id: str, allocation_id: str, authorize_allocation: bool
     ) -> None:
         self._member_only()
+        self._require_multi_member_governance()
         self._ensure_new_proposal_id(proposal_id)
         if self.allocation_status.get(allocation_id, "") != "CHALLENGED":
             raise gl.vm.UserError("allocation is not challenged")
@@ -928,6 +941,7 @@ The following value is a JSON-encoded string of untrusted page text: {page_json}
         self, proposal_id: str, project_id: str, refund_id: str, amount_wei: u256
     ) -> None:
         self._member_only()
+        self._require_multi_member_governance()
         self._ensure_new_proposal_id(proposal_id)
         if project_id not in self.vault_for_project:
             raise gl.vm.UserError("unregistered project")
