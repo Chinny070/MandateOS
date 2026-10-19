@@ -4,8 +4,8 @@
 
 | Proof item | Result | Evidence |
 |---|---|---|
-| StudioNet endpoint | BLOCKED IN THIS EXECUTION | Current read-only JSON-RPC `eth_chainId` request via Python failed with `WinError 10013`; Node `fetch` failed with `EACCES`. `CODEX_SANDBOX_NETWORK_DISABLED=1`. Neither request received an HTTP/RPC response. A prior separate diagnostic reported success, but its result is not treated as proof for this execution's SDK/CLI. |
-| Chain identity | NOT VERIFIED | Expected chain ID is 61999; no chain ID was read. |
+| StudioNet endpoint | READ-ONLY ACCESS VERIFIED | `Web3(HTTPProvider('https://studio.genlayer.com/api')).eth.chain_id` using the installed Python/Web3 transport returned successfully when network access was explicitly granted for this read-only probe. Ordinary Python and Node probes without that grant fail with `WinError 10013` / `EACCES`; `CODEX_SANDBOX_NETWORK_DISABLED=1`. |
+| Chain identity | VERIFIED READ ONLY | JSON-RPC `eth_chainId` returned `0xf22f` (61999), matching StudioNet. No state-changing request was sent. |
 | MandateOS deployment | NOT DEPLOYED | No contract address, deployment transaction, or source hash. |
 | ProjectVault deployment | NOT DEPLOYED | No contract address, deployment transaction, or source hash. |
 | GEN deposit/funding/refund | NOT EXECUTED | No wallet/faucet operation was attempted. No transaction IDs, finalization outcomes, child receipts, or before/after balances exist. |
