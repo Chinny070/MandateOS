@@ -74,3 +74,54 @@ def test_vault_refund_authorization_and_balance_guards(direct_vm, direct_deploy)
     with direct_vm.prank(parent), direct_vm.expect_revert("insufficient vault balance"):
         vault.initiate_refund("refund-1", 1)
     assert vault.get_refund_status("refund-1") == "UNKNOWN"
+
+
+def test_funding_success_callback_requires_registered_vault_and_exact_amount(direct_vm, direct_deploy):
+    treasury = direct_deploy("contracts/mandate_os.py")
+    treasury_address = bytes(direct_vm._contract_address)
+    vault_address = create_address("registered-callback-vault")
+    treasury.vault_for_project["project-a"] = vault_address
+    treasury.funding_project["allocation-a"] = "project-a"
+    treasury.funding_amount["allocation-a"] = 17
+    treasury.funding_status["allocation-a"] = "PENDING"
+    treasury.pending_transfer_wei = 17
+
+    with direct_vm.prank(create_address("untrusted-callback")), direct_vm.expect_revert("untrusted funding sender"):
+        treasury.record_funding_child_success("allocation-a", "project-a", 17)
+    with direct_vm.prank(vault_address), direct_vm.expect_revert("funding amount mismatch"):
+        treasury.record_funding_child_success("allocation-a", "project-a", 16)
+    with direct_vm.prank(vault_address):
+        treasury.record_funding_child_success("allocation-a", "project-a", 17)
+    assert treasury.get_funding_status("allocation-a") == "CHILD_SUCCESS"
+    assert treasury.get_pending_transfer_wei() == 0
+    assert treasury_address  # confirms this test deployed the parent contract
+
+
+def test_duplicate_funding_success_callback_cannot_release_pending_reservation(direct_vm, direct_deploy):
+    treasury = direct_deploy("contracts/mandate_os.py")
+    vault_address = create_address("registered-callback-vault-duplicate")
+    treasury.vault_for_project["project-a"] = vault_address
+    treasury.funding_project["allocation-a"] = "project-a"
+    treasury.funding_amount["allocation-a"] = 17
+    treasury.funding_status["allocation-a"] = "CHILD_SUCCESS"
+    treasury.pending_transfer_wei = 0
+
+    with direct_vm.prank(vault_address), direct_vm.expect_revert("allocation is not awaiting child success"):
+        treasury.record_funding_child_success("allocation-a", "project-a", 17)
+
+
+def test_vault_refund_success_callback_requires_parent_and_exact_value(direct_vm, direct_deploy):
+    parent = create_address("refund-callback-parent")
+    direct_vm.sender = create_address("refund-callback-deployer")
+    direct_vm.value = 0
+    vault = direct_deploy("contracts/project_vault.py", _hex(parent), "project-a")
+    vault.refund_status["refund-a"] = "SCHEDULED"
+    vault.refund_amount["refund-a"] = 9
+
+    with direct_vm.prank(create_address("untrusted-refund-callback")), direct_vm.expect_revert("MandateOS parent required"):
+        vault.record_refund_child_success("refund-a", "project-a", 9)
+    with direct_vm.prank(parent), direct_vm.expect_revert("refund amount mismatch"):
+        vault.record_refund_child_success("refund-a", "project-a", 8)
+    with direct_vm.prank(parent):
+        vault.record_refund_child_success("refund-a", "project-a", 9)
+    assert vault.get_refund_status("refund-a") == "CHILD_SUCCESS"

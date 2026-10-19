@@ -20,6 +20,7 @@ Use one repo. Independent contracts are deployed and verified on the same Studio
 - The keeper may invoke permissionless maintenance, but cannot waive challenge windows or change recipient addresses.
 - Project operators may submit information but not approve their own milestones or withdraw escrow at will.
 - Child messages are asynchronous. Parent success is not child success; a failed value-carrying child is not necessarily refunded.
+- Gate 1 uses a vault-to-parent finalized callback for child success, followed by an explicit cross-contract state read before treasury status becomes `VERIFIED`. Receipt IDs and failed-child classification still require the independent keeper/RPC reconciler.
 - Each irreversible disbursement requires a finalized application authorization and proof of independently finalized child settlement.
 
 ## Suggested architecture refinements

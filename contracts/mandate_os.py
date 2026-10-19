@@ -22,6 +22,7 @@ class MandateOS(gl.Contract):
     funding_project: TreeMap[str, str]
     funding_amount: TreeMap[str, u256]
     funding_status: TreeMap[str, str]
+    pending_transfer_wei: u256
     refund_project: TreeMap[str, str]
     refund_amount: TreeMap[str, u256]
     refund_status: TreeMap[str, str]
@@ -31,6 +32,7 @@ class MandateOS(gl.Contract):
         self.paused = False
         self.total_deposited_wei = u256(0)
         self.total_refunds_received_wei = u256(0)
+        self.pending_transfer_wei = u256(0)
 
     def _only_admin(self) -> None:
         if gl.message.sender_address != self.administrator:
@@ -90,28 +92,48 @@ class MandateOS(gl.Contract):
         self.committed_for_project[project_id] = current + amount_wei
         self.funding_project[allocation_id] = project_id
         self.funding_amount[allocation_id] = amount_wei
-        self.funding_status[allocation_id] = "SCHEDULED"
+        self.funding_status[allocation_id] = "PENDING"
+        self.pending_transfer_wei += amount_wei
         vault = gl.get_contract_at(self.vault_for_project[project_id])
         vault.emit(value=amount_wei, on="finalized").fund_project(allocation_id, project_id)
+
+    @gl.public.write
+    def record_funding_child_success(self, allocation_id: str, project_id: str, amount_wei: u256) -> None:
+        """Accept a finalized-vault callback; never trust a keeper assertion."""
+        if allocation_id not in self.funding_status:
+            raise gl.vm.UserError("unknown allocation")
+        if self.funding_status[allocation_id] not in ("PENDING", "UNKNOWN"):
+            raise gl.vm.UserError("allocation is not awaiting child success")
+        if self.funding_project[allocation_id] != project_id:
+            raise gl.vm.UserError("funding project mismatch")
+        if self.vault_for_project[project_id] != gl.message.sender_address:
+            raise gl.vm.UserError("untrusted funding sender")
+        if amount_wei != self.funding_amount[allocation_id]:
+            raise gl.vm.UserError("funding amount mismatch")
+        self.funding_status[allocation_id] = "CHILD_SUCCESS"
+        self.pending_transfer_wei -= amount_wei
 
     @gl.public.write
     def reconcile_funding(self, allocation_id: str) -> None:
         """Confirm child funding through an authenticated vault read.
 
-        If evidence is absent, leave SCHEDULED. Do NOT blindly reissue payment.
+        Only a finalized vault callback advances PENDING to CHILD_SUCCESS.
+        Do NOT blindly reissue a payment when receipt status is uncertain.
         Independent parent/child receipt inspection is still mandatory in the
         keeper, particularly for failures or permanent value loss.
         """
         if allocation_id not in self.funding_status:
             raise gl.vm.UserError("unknown allocation")
-        if self.funding_status[allocation_id] == "CONFIRMED":
+        if self.funding_status[allocation_id] == "VERIFIED":
             return
+        if self.funding_status[allocation_id] != "CHILD_SUCCESS":
+            raise gl.vm.UserError("child success not confirmed")
         project_id = self.funding_project[allocation_id]
         vault = gl.get_contract_at(self.vault_for_project[project_id])
         seen_amount = vault.view().get_allocation_amount(allocation_id)
         if seen_amount != self.funding_amount[allocation_id]:
             raise gl.vm.UserError("funding unconfirmed; inspect child receipt")
-        self.funding_status[allocation_id] = "CONFIRMED"
+        self.funding_status[allocation_id] = "VERIFIED"
 
     @gl.public.write
     def request_refund(self, project_id: str, refund_id: str, amount_wei: u256) -> None:
@@ -125,7 +147,7 @@ class MandateOS(gl.Contract):
             raise gl.vm.UserError("zero refund")
         self.refund_project[refund_id] = project_id
         self.refund_amount[refund_id] = amount_wei
-        self.refund_status[refund_id] = "SCHEDULED"
+        self.refund_status[refund_id] = "PENDING"
         vault = gl.get_contract_at(self.vault_for_project[project_id])
         vault.emit(on="finalized").initiate_refund(refund_id, amount_wei)
 
@@ -133,7 +155,7 @@ class MandateOS(gl.Contract):
     def receive_refund(self, refund_id: str, project_id: str) -> None:
         if refund_id not in self.refund_status:
             raise gl.vm.UserError("unknown refund")
-        if self.refund_status[refund_id] != "SCHEDULED":
+        if self.refund_status[refund_id] != "PENDING":
             raise gl.vm.UserError("refund already received")
         if self.refund_project[refund_id] != project_id:
             raise gl.vm.UserError("refund project mismatch")
@@ -141,8 +163,10 @@ class MandateOS(gl.Contract):
             raise gl.vm.UserError("untrusted refund sender")
         if gl.message.value != self.refund_amount[refund_id]:
             raise gl.vm.UserError("refund amount mismatch")
-        self.refund_status[refund_id] = "CONFIRMED"
+        self.refund_status[refund_id] = "CHILD_SUCCESS"
         self.total_refunds_received_wei += gl.message.value
+        vault = gl.get_contract_at(self.vault_for_project[project_id])
+        vault.emit(on="finalized").record_refund_child_success(refund_id, project_id, gl.message.value)
 
     @gl.public.view
     def get_balance_wei(self) -> u256:
@@ -153,8 +177,26 @@ class MandateOS(gl.Contract):
         return self.funding_status.get(allocation_id, "UNKNOWN")
 
     @gl.public.view
+    def get_pending_transfer_wei(self) -> u256:
+        return self.pending_transfer_wei
+
+    @gl.public.view
     def get_refund_status(self, refund_id: str) -> str:
         return self.refund_status.get(refund_id, "UNKNOWN")
+
+    @gl.public.write
+    def reconcile_refund(self, refund_id: str) -> None:
+        if refund_id not in self.refund_status:
+            raise gl.vm.UserError("unknown refund")
+        if self.refund_status[refund_id] == "VERIFIED":
+            return
+        if self.refund_status[refund_id] != "CHILD_SUCCESS":
+            raise gl.vm.UserError("refund child success not confirmed")
+        project_id = self.refund_project[refund_id]
+        vault = gl.get_contract_at(self.vault_for_project[project_id])
+        if vault.view().get_refund_status(refund_id) != "CHILD_SUCCESS":
+            raise gl.vm.UserError("vault refund child success not confirmed")
+        self.refund_status[refund_id] = "VERIFIED"
 
     @gl.public.view
     def get_vault_address(self, project_id: str) -> str:

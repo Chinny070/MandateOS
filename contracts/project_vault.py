@@ -15,6 +15,7 @@ class ProjectVault(gl.Contract):
     total_refund_scheduled_wei: u256
     allocations: TreeMap[str, u256]
     refund_status: TreeMap[str, str]
+    refund_amount: TreeMap[str, u256]
 
     def __init__(self, mandate_os_address: str, project_id: str):
         if not project_id or len(project_id) > 80:
@@ -40,6 +41,8 @@ class ProjectVault(gl.Contract):
             raise gl.vm.UserError("no GEN sent")
         self.allocations[allocation_id] = amount
         self.total_received_wei += amount
+        parent = gl.get_contract_at(self.mandate_os)
+        parent.emit(on="finalized").record_funding_child_success(allocation_id, project_id, amount)
 
     @gl.public.write
     def initiate_refund(self, refund_id: str, amount_wei: u256) -> None:
@@ -52,9 +55,22 @@ class ProjectVault(gl.Contract):
             raise gl.vm.UserError("insufficient vault balance")
         # No automatic retries: if the child fails, funds may not return.
         self.refund_status[refund_id] = "SCHEDULED"
+        self.refund_amount[refund_id] = amount_wei
         self.total_refund_scheduled_wei += amount_wei
         parent = gl.get_contract_at(self.mandate_os)
         parent.emit(value=amount_wei, on="finalized").receive_refund(refund_id, self.project_id)
+
+    @gl.public.write
+    def record_refund_child_success(self, refund_id: str, project_id: str, amount_wei: u256) -> None:
+        """Accept the authenticated MandateOS callback after refund finality."""
+        self._require_parent()
+        if project_id != self.project_id:
+            raise gl.vm.UserError("refund project mismatch")
+        if refund_id not in self.refund_status or self.refund_status[refund_id] != "SCHEDULED":
+            raise gl.vm.UserError("refund is not awaiting confirmation")
+        if amount_wei != self.refund_amount[refund_id]:
+            raise gl.vm.UserError("refund amount mismatch")
+        self.refund_status[refund_id] = "CHILD_SUCCESS"
 
     @gl.public.view
     def get_parent_address(self) -> str:
