@@ -28,11 +28,11 @@ The linter must run with UTF-8 output on this Windows host (`$env:PYTHONIOENCODI
 
 ## Delivery blockers
 
-- GitHub connector verification for `Chinny070/MandateOS` reports `main` at `ca3c0be070b5b3099d26e38c1bab7c0bf7ab63fa` and repository permission `push: true`, matching the local baseline. Direct `git push` remains blocked because this execution environment cannot connect to `github.com:443`; this work session has not updated the remote.
+- GitHub connector confirms `main` at `bdff1703fab7340e6476576bbf8904b3a0d7ea6b`, matching local `HEAD`. The tested governance reference milestone was pushed with a normal fast-forward update; no force push was used.
 - The network diagnostic is scoped to this execution environment (`CODEX_SANDBOX_NETWORK_DISABLED=1`, Python `WinError 10013`, Node `EACCES`). No RPC response or chain ID was observed and no chain write was attempted; this is not evidence of a StudioNet outage. A separate earlier diagnostic's successful Node/PowerShell request is a distinct environment observation, not current SDK proof.
 - No StudioNet wallet/faucet funding is available in this environment. No deployment, GEN movement, real transaction receipt, or balance claim is made.
 - `CODEX_MASTER_PROMPT.md` describes desired follow-on product behavior. It does not make administrator-only lab transfer methods production authorization.
 
 ## Local milestone
 
-- Local baseline commit: `ca3c0be070b5b3099d26e38c1bab7c0bf7ab63fa` (`Record GitHub publishing blocker`); current governance reference-model work is pending commit.
+- Current pushed milestone: `bdff1703fab7340e6476576bbf8904b3a0d7ea6b` (`Add deterministic governance reference model`).
