@@ -4,7 +4,14 @@
   "python": "3.12.10",
   "node": "24.14.0",
   "npm": "11.9.0",
-  "genlayer_cli": "0.39.1",
+  "genlayer_cli_last_verified": "0.39.1",
+  "current_execution_diagnostics": {
+    "genlayer_cli_on_path": false,
+    "codex_sandbox_network_disabled": "1",
+    "python_sdk_rpc_probe": "BLOCKED_WINERROR_10013",
+    "node_fetch_rpc_probe": "BLOCKED_EACCES",
+    "diagnostic_date": "2026-10-19"
+  },
   "python_packages": {
     "pytest": "8.4.2",
     "genlayer_test": "0.29.2",
@@ -16,7 +23,7 @@
     "name": "StudioNet",
     "chain_id_expected": 61999,
     "rpc_url": "https://studio.genlayer.com/api",
-    "probe_status": "BLOCKED_SANDBOX_NETWORK_DISABLED"
+    "probe_status": "BLOCKED_CURRENT_EXECUTION_NETWORK_POLICY"
   },
-  "limits": "Tool versions were read from the installed environment. StudioNet RPC chain ID was not observed; Direct Mode is not live validator consensus."
+  "limits": "Python SDK packages are installed. The previously verified GenLayer CLI version is recorded separately, but no genlayer executable is on this execution environment PATH. Current Python and Node read-only RPC probes were blocked by local network policy; no StudioNet chain ID was observed here. Direct Mode is not live validator consensus."
 }
