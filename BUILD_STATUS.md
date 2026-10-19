@@ -29,10 +29,10 @@ The linter must run with UTF-8 output on this Windows host (`$env:PYTHONIOENCODI
 
 ## Delivery blockers
 
-- Current branch is `codex/onchain-governance`, based on verified GitHub HEAD `e085583ef4ec4a6c2e4548b98968fb57c505f9a5`; implementation commit and remote branch head will be recorded after push verification. `main` remains `4b446f04bb811c985230dee55b904e73412438b1`.
+- Verified implementation commit `22d0d89de1ea0e56651764bd22c2b3d5a0006690` is pushed to `origin/codex/onchain-governance` as a fast-forward from `e085583ef4ec4a6c2e4548b98968fb57c505f9a5`. Remote `main` remains `4b446f04bb811c985230dee55b904e73412438b1`. This status-only follow-up records the verified source commit; its own commit is the branch's final documentation head.
 - No StudioNet wallet/faucet funding is available in this environment. No deployment, GEN movement, real transaction receipt, or balance claim is made.
 - `CODEX_MASTER_PROMPT.md` describes desired follow-on product behavior. It does not make administrator-only lab transfer methods production authorization.
 
 ## Local milestone
 
-- Latest local verification: 99 passed, Python compilation passed, and both contract lint runs passed. The new commit SHA and remote branch head will be recorded after push verification.
+- Latest local verification: 99 passed, Python compilation passed, and both contract lint runs passed. Source/test commit `22d0d89de1ea0e56651764bd22c2b3d5a0006690` is the verified implementation pushed to GitHub. This status-only follow-up does not change tested source.
