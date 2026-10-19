@@ -4,7 +4,7 @@ This status separates local verification from StudioNet evidence. The code and t
 
 | Gate / stage | State | Verified evidence and remaining work |
 |---|---|---|
-| Gate 0 — environment and static validation | PARTIAL | Python compileall passed; both GenVM lint runs passed. A read-only JSON-RPC `eth_chainId` request to `https://studio.genlayer.com/api` returned HTTP 200 and `0xf22f` (61999). No contracts or wallets were modified. |
+| Gate 0 — environment and static validation | PASS | Python compileall, full pytest, both GenVM lint runs, frontend typecheck/tests/build, raw JSON-RPC, and installed GenLayerPY read-only connectivity all passed. Raw RPC and GenLayerPY independently returned chain ID `0xf22f` (61999). No contracts or wallets were modified. |
 | Gate 1 — custody and settlement | PARTIAL | Native transfers and contract callbacks exist in the two-contract architecture. No live contracts are deployed, so there are no real parent transactions, transfer receipts, child receipts, or before/after contract balances. |
 | Gate 2 — governance and risk | PARTIAL | Existing contract authorization, governance, mandate and challenge coverage is preserved. Existing Direct Mode and regression tests pass as part of the 107-test suite. Local execution is not StudioNet validator consensus. |
 | Gate 3 — native evidence and consensus | PARTIAL | Native contract evidence evaluation and provenance remain in the implementation. No live validator assessment was submitted; Direct Mode cannot prove Equivalence Principle judgments or validator agreement. |
@@ -27,6 +27,8 @@ This status separates local verification from StudioNet evidence. The code and t
 - Secret review of changed contract, keeper, test, and frontend files — no credentials or wallet secrets found.
 
 The Python suite includes local Direct Mode and deterministic fixture tests; none of the 109 tests submits to StudioNet. Frontend tests only map data states and formatting. Build/test success does not claim live UI state or GEN settlement.
+
+The installed `genlayer-py==0.16.3` StudioNet client successfully read `client.w3.eth.chain_id == 0xf22f`. This confirms SDK read connectivity only; no transaction or contract address was available to exercise deployment or live contract methods.
 
 ## Release blockers and next action
 

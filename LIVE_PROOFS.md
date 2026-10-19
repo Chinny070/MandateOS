@@ -5,6 +5,7 @@
 | Proof item | Result | Evidence |
 |---|---|---|
 | StudioNet endpoint and chain identity | READ-ONLY VERIFIED | On 2026-10-19, an authorized read-only JSON-RPC `eth_chainId` request to `https://studio.genlayer.com/api` returned HTTP 200 with `0xf22f` (61999). No RPC errors occurred. No state-changing call was sent. |
+| Installed GenLayerPY connectivity | READ-ONLY VERIFIED | `genlayer-py==0.16.3`, configured with its StudioNet preset, read `client.w3.eth.chain_id` as `0xf22f` (61999). This confirms RPC connectivity only; no deployed contracts or transaction IDs were available for transaction-method inspection against live state. |
 | Parent Intelligent Contract transactions | NONE | No MandateOS or ProjectVault address is deployed in this environment, so no real contract transaction can be queried. |
 | EOA external GEN payment relationship | NOT AVAILABLE FROM SUPPORTED SDK RECEIPT API | GenLayerJS `getTriggeredTransactionIds` and GenLayerPY `get_triggered_transaction_ids` derive IDs from `InternalMessageProcessed` events. They establish internal IC child IDs. They do not expose a child receipt identifier for the EOA external value transfer. Matching value, address, balance delta, or nearby timestamp is not treated as causal proof. |
 | EOA beneficiary settlement | UNVERIFIED / NOT EXECUTED | No EOA transfer was made. Dashboard and keeper cannot promote an EOA payment to verified or retry an uncertain payment. |
