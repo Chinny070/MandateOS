@@ -1,5 +1,7 @@
 # Deployment readiness audit
 
+> **Current status is superseded by [PREDEPLOYMENT_READINESS.md](PREDEPLOYMENT_READINESS.md).** The current SDK read-only chain check succeeds, but current StudioNet fee-policy reads fail with JSON-RPC `-32601 sim_getFeeConfig` and the installed CLI cannot estimate fees. Do not follow the older statement below that reachability alone was enough to continue.
+
 **Verdict: NOT READY FOR PRODUCTION. Do not deploy or transfer GEN until the open release blockers are resolved and the user explicitly approves the operation.** This document describes a runbook; it is not deployment authorization.
 
 The 2026-10-19 source audit found and fixed a milestone challenge race, a single-member governance path, and permissive calendar-date validation. See [RELEASE_READINESS_AUDIT.md](RELEASE_READINESS_AUDIT.md) for severity, tests, and remaining limitations. Local verification does not change the verdict.

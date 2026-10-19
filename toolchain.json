@@ -4,15 +4,24 @@
   "python": "3.12.10",
   "node": "24.14.0",
   "npm": "11.9.0",
-  "genlayer_cli_last_verified": "0.39.1",
-  "current_execution_diagnostics": {
-    "genlayer_cli_on_path": false,
-    "codex_sandbox_network_disabled": "1",
-    "python_sdk_rpc_probe": "BLOCKED_WINERROR_10013",
-    "node_fetch_rpc_probe": "BLOCKED_EACCES",
-    "approved_read_only_web3_chain_id": "0xf22f",
-    "approved_read_only_chain_id_decimal": 61999,
-    "diagnostic_date": "2026-10-19"
+  "genlayer_cli": {
+    "version": "0.39.1",
+    "on_path": true,
+    "network": "studionet",
+    "deployment_mode": "custom ordered script required; direct deploy waits only for ACCEPTED in inspected implementation",
+    "estimate_fees_command": "unavailable: unknown command"
+  },
+  "application_sdk": {
+    "package": "genlayer-js",
+    "version": "2.0.0-rc.1",
+    "status": "release candidate",
+    "studionet_chain_id": 61999,
+    "fee_policy_rpc": "BLOCKED_METHOD_NOT_FOUND_sim_getFeeConfig"
+  },
+  "sandbox": {
+    "CODEX_SANDBOX_NETWORK_DISABLED": "1",
+    "ordinary_shell_rpc": "restricted",
+    "approved_read_only_rpc": "eth_chainId returned 0xf22f"
   },
   "python_packages": {
     "pytest": "8.4.2",
@@ -25,7 +34,10 @@
     "name": "StudioNet",
     "chain_id_expected": 61999,
     "rpc_url": "https://studio.genlayer.com/api",
-    "probe_status": "READ_ONLY_CHAIN_ID_CONFIRMED_WITH_NETWORK_ACCESS_GRANT"
+    "raw_rpc_eth_chain_id": "0xf22f",
+    "genlayer_js_eth_chain_id": "0xf22f",
+    "fee_estimation": "BLOCKED: sim_getFeeConfig returned JSON-RPC -32601",
+    "writes_attempted": false
   },
-  "limits": "Python SDK packages are installed. The previously verified GenLayer CLI version is recorded separately, but no genlayer executable is on this execution environment PATH. An explicitly approved read-only Python/Web3 transport call confirmed chain ID 61999; ordinary Python and Node probes remain blocked by local network policy. No state-changing SDK call was attempted. Direct Mode is not live validator consensus."
+  "limits": "The current installed SDK is a release candidate. StudioNet chain identity is read-only verified, but the fee policy endpoint needed for SDK quotes is unavailable, and the installed CLI has no estimate-fees command. No signing, deployment or GEN transfer occurred. Direct Mode is not live validator consensus."
 }

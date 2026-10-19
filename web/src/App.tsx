@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
 import { TransactionHashVariant } from "genlayer-js/types";
+import { submitStudioNetWrite } from "./transactions";
 import {
   formatUtcTimestamp,
   formatWei,
@@ -479,11 +480,7 @@ export function App() {
         functionName: "acknowledge_eoa_payout_received",
         args: [handles.paymentId.trim(), amountWei],
       };
-      const estimate = await writer.estimateTransactionFeesForWrite(call);
-      const txId = String(await writer.writeContract({
-        ...call,
-        fees: { distribution: estimate.distribution, feeValue: estimate.feeValue },
-      }));
+      const txId = String(await submitStudioNetWrite(writer, call));
       update("transactionId", txId);
       setMessage(`Acknowledgment submitted for ${formatWei(amountWei)}. Your signature attests that this exact GEN amount reached your wallet; it does not verify settlement. Waiting for finalization.`);
 
@@ -535,11 +532,7 @@ export function App() {
         functionName: "vote",
         args: [handles.proposalId.trim(), support],
       };
-      const estimate = await writer.estimateTransactionFeesForWrite(call);
-      const txId = await writer.writeContract({
-        ...call,
-        fees: { distribution: estimate.distribution, feeValue: estimate.feeValue },
-      });
+      const txId = await submitStudioNetWrite(writer, call);
       update("transactionId", String(txId));
       setMessage(`Vote transaction submitted: ${txId}. Submission is not confirmation; inspect its final status below.`);
       await inspectTransaction(String(txId));
@@ -555,8 +548,7 @@ export function App() {
       const account = await requireCurrentStudioNetWallet();
       const writer: any = createClient({ chain: studionet, account: account as `0x${string}`, provider: window.ethereum });
       const call = { account: account as `0x${string}`, address: handles.mandateAddress as `0x${string}`, functionName, args };
-      const estimate = await writer.estimateTransactionFeesForWrite(call);
-      const txId = await writer.writeContract({ ...call, fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
+      const txId = await submitStudioNetWrite(writer, call);
       update("transactionId", String(txId));
       setMessage(`${description} submitted: ${txId}. Submission is not confirmation; inspect final status below.`);
       await inspectTransaction(String(txId));
@@ -571,8 +563,7 @@ export function App() {
       const account = await requireCurrentStudioNetWallet();
       const writer: any = createClient({ chain: studionet, account: account as `0x${string}`, provider: window.ethereum });
       const call = { account: account as `0x${string}`, address: effectiveVault as `0x${string}`, functionName, args };
-      const estimate = await writer.estimateTransactionFeesForWrite(call);
-      const txId = await writer.writeContract({ ...call, fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
+      const txId = await submitStudioNetWrite(writer, call);
       update("transactionId", String(txId));
       setMessage(`${description} submitted directly to ProjectVault: ${txId}. The onchain challenge is atomic with this transaction; inspect its finalized result below.`);
       await inspectTransaction(String(txId));

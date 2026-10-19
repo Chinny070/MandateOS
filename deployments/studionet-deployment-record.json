@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "status": "PREPARED_NOT_AUTHORIZED",
+  "network": "StudioNet",
+  "chain_id": 61999,
+  "rpc_url": "https://studio.genlayer.com/api",
+  "contracts": {},
+  "source_hashes": {},
+  "notes": [
+    "Preparation record only. No transaction has been submitted.",
+    "The script requires explicit user authorization, an unlocked existing CLI signer, a matching measured fee profile, and successful read-only chain identity verification."
+  ]
+}

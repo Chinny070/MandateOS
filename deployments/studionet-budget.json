@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "currency": "GEN",
+  "ceiling_wei": "10000000000000000000",
+  "actual_fees_wei": "0",
+  "committed_fees_wei": "0",
+  "actual_test_value_wei": "0",
+  "committed_test_value_wei": "0",
+  "unknown_liabilities_wei": "0",
+  "unknown_fee_liabilities_wei": "0",
+  "unknown_test_value_liabilities_wei": "0",
+  "first_test_value_ceiling_wei": "10000000000000000",
+  "pending_fee_quote_wei": null,
+  "pending_transaction_id": null,
+  "remaining_wei": "10000000000000000000",
+  "status": "PREPARED_NO_SPEND"
+}

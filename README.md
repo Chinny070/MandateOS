@@ -6,20 +6,21 @@ The repository also contains a noncustodial, read-only StudioNet keeper and a Re
 
 ## Release status
 
-The project is **not production ready**. Local tests, Direct Mode execution, static analysis, RPC reads, and a frontend build do not prove StudioNet validator consensus or live GEN settlement. No MandateOS or ProjectVault deployment, deposit, refund, payout, repayment, or distribution is recorded in this repository's live proof log.
+The project is **not ready for deployment**. The raw RPC and GenLayerJS read-only chain identity requests returned StudioNet chain ID `0xf22f`; however, the SDK fee-policy request currently fails because StudioNet returns `-32601 Method not found` for `sim_getFeeConfig`, and the installed CLI has no fee-estimation command. Deployment and wallet writes are gated until fee allocation can be measured and quoted. No MandateOS or ProjectVault deployment, deposit, refund, payout, repayment, or distribution is recorded in this repository's live proof log.
 
 EOA milestone payouts remain unsuitable for production settlement. The supported GenLayer SDK exposes internal IC message child IDs but not a causally linked receipt for the external EOA value transfer. Such a payment remains pending or value-at-risk; it cannot be marked successful or retried automatically.
 
 The configured EOA beneficiary can sign a separate ProjectVault acknowledgment for the exact payment ID and expected amount. The onchain record proves that the beneficiary wallet attested to receipt; it does not change payout settlement status or reservations and is not independent settlement evidence.
 
-Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [docs/DEPLOYMENT_READINESS.md](docs/DEPLOYMENT_READINESS.md) for verified results, blockers, exact deployment order, and the small-value runbook.
+Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [docs/PREDEPLOYMENT_READINESS.md](docs/PREDEPLOYMENT_READINESS.md) for verified results, fee and signer blockers, budget controls, the gated deployment flow, and the small-value runbook. The older [deployment audit](docs/DEPLOYMENT_READINESS.md) remains historical; the newer readiness report records the current SDK/RPC results.
 
 ## Repository layout
 
 - `contracts/mandate_os.py` — membership, proposal snapshots and voting, mandates, evidence receipts, allocations, refunds, agreements, milestones, challenges and governed resolutions.
 - `contracts/project_vault.py` — project funding custody, agreement and milestone records, reserved payouts/refunds/distributions, payable repayments and revenue, default and closure guards.
 - `keeper/` — StudioNet-pinned RPC reader, durable SQLite observation archive, reconciliation classifications, alerts and reports. It never signs or sends GEN.
-- `web/` — real-data dashboard. Core and vault indexes allow recent proposal, project and vault record discovery. User-signed voting, milestone proposal and milestone challenge calls use existing contract methods.
+- `web/` — real-data dashboard. Core and vault indexes allow recent proposal, project and vault record discovery. User-signed writes use GenLayerJS fee estimation and preserve child-message allocations; they fail closed while StudioNet's current fee-policy RPC method is unavailable.
+- `deploy/` and `scripts/` — explicit-gate two-contract deployment script, read-only StudioNet/fee compatibility check and cumulative 10 GEN operational budget helpers.
 - `tests/` — Direct Mode contract tests, keeper/RPC adapter tests, and frontend state-mapping tests. Test fixtures are local evidence only.
 - `docs/` — architecture, financial model, test matrix and readiness documentation.
 
