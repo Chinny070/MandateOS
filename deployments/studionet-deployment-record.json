@@ -1,13 +1,88 @@
 {
   "schema_version": 1,
-  "status": "PREPARED_NOT_AUTHORIZED",
+  "status": "DEPLOYED_VERIFIED",
   "network": "StudioNet",
   "chain_id": 61999,
   "rpc_url": "https://studio.genlayer.com/api",
-  "contracts": {},
-  "source_hashes": {},
+  "contracts": {
+    "core": {
+      "status": "FINALIZED_SUCCESS",
+      "source_path": "contracts/mandate_os.py",
+      "source_sha256": "a0cad2bdc2a7be57d5e80e4f681d5f0897708bcf8b6ace53a81480c2e849a5d4",
+      "constructor_args": [],
+      "fee_model": "EVM gas cap only; see LIVE_PROOFS.md for the observed zero-gas-price reference and its limits.",
+      "prepared_at": "2026-10-19T23:13:46.723Z",
+      "gas_limit": "500000",
+      "gas_price_wei": "0",
+      "fee_cap_wei": "0",
+      "transaction_id": "0x8c5c53afc9e6f8958688df572e946dc8c3880133a388bf98640615e5fd1841a7",
+      "submitted_at": "2026-10-19T23:13:50.775Z",
+      "final_status": "FINALIZED",
+      "result_name": "MAJORITY_AGREE",
+      "execution_result": "SUCCESS",
+      "finalized_at": "2026-10-19T23:14:27.406Z",
+      "evm_receipt_status": "0x1",
+      "evm_gas_used": "0x7a1200",
+      "evm_effective_gas_price_wei": "0x0",
+      "actual_evm_fee_wei": "0",
+      "fee_observation": "ACTUAL_EVM_GAS_FEE_RECONCILED",
+      "contract_address": "0x32698630D6144882Bd0c1D5B00C74348c53ea58B"
+    },
+    "vault": {
+      "status": "FINALIZED_SUCCESS",
+      "source_path": "contracts/project_vault.py",
+      "source_sha256": "2da278f14385feee0191dfd2ed9d8cfe0c29a03d5138aa638885f179f9be3c33",
+      "constructor_args": [
+        "0x32698630D6144882Bd0c1D5B00C74348c53ea58B",
+        "mandateos-demo-001"
+      ],
+      "fee_model": "EVM gas cap only; see LIVE_PROOFS.md for the observed zero-gas-price reference and its limits.",
+      "prepared_at": "2026-10-19T23:14:27.744Z",
+      "gas_limit": "500000",
+      "gas_price_wei": "0",
+      "fee_cap_wei": "0",
+      "transaction_id": "0xd42a4c5dcb6a25ba7909eb312239d21bc8c27ffa2ef4b3cd1c33e320b5931d39",
+      "submitted_at": "2026-10-19T23:14:30.462Z",
+      "final_status": "FINALIZED",
+      "result_name": "MAJORITY_AGREE",
+      "execution_result": "SUCCESS",
+      "finalized_at": "2026-10-19T23:15:12.611Z",
+      "evm_receipt_status": "0x1",
+      "evm_gas_used": "0x7a1200",
+      "evm_effective_gas_price_wei": "0x0",
+      "actual_evm_fee_wei": "0",
+      "fee_observation": "ACTUAL_EVM_GAS_FEE_RECONCILED",
+      "contract_address": "0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4"
+    }
+  },
+  "source_hashes": {
+    "mandate_os_sha256": "a0cad2bdc2a7be57d5e80e4f681d5f0897708bcf8b6ace53a81480c2e849a5d4",
+    "project_vault_sha256": "2da278f14385feee0191dfd2ed9d8cfe0c29a03d5138aa638885f179f9be3c33"
+  },
   "notes": [
-    "Preparation record only. No transaction has been submitted.",
-    "The script requires explicit user authorization, an unlocked existing CLI signer, a matching measured fee profile, and successful read-only chain identity verification."
-  ]
+    "Deployment was explicitly authorized by the user for StudioNet and project ID mandateos-demo-001.",
+    "Exactly two deployments were submitted once each through GenLayer CLI 0.39.1 with bundled genlayer-js 1.1.8; both receipts finalized with majority agreement and successful leader execution.",
+    "No treasury deposit, project funding, governance write, GEN payout, repayment, refund, or financial test transfer was submitted.",
+    "The EVM fee receipts report zero effective gas price for these two transactions only; this is not a future fee guarantee."
+  ],
+  "cli_version": "0.39.1",
+  "cli_genlayer_js_version": "1.1.8",
+  "fee_model": "Legacy CLI EVM gas; exact signed gas-limit × gas-price cap plus finalized EVM-receipt reconciliation. No v0.6 fee-profile fields are sent.",
+  "current_gas_price_wei": "0",
+  "preparation_git_head": "b7bb8bc252cc4528bf67c3ac04c4dfbafcb9684f",
+  "project_id": "mandateos-demo-001",
+  "started_at": "2026-10-19T23:13:46.719Z",
+  "completed_at": "2026-10-19T23:15:12.924Z",
+  "post_deployment_readbacks": {
+    "core_balance_wei": "0",
+    "core_treasury_summary_wei": ["0", "0", "0", "0", "0", "0"],
+    "deployer_address": "0xaffE15eEc45b68835cc9E5B4Ab85dD5deaE8e70b",
+    "deployer_member_weight": "1",
+    "registered_project_count": "0",
+    "core_vault_for_project": "",
+    "vault_parent_address": "0x32698630D6144882Bd0c1D5B00C74348c53ea58B",
+    "vault_project_id": "mandateos-demo-001",
+    "vault_balance_wei": "0",
+    "readback_note": "The ProjectVault is deployed but not governance-registered in Core. No post-deployment governance transaction was authorized."
+  }
 }

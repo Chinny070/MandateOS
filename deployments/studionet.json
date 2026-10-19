@@ -2,9 +2,14 @@
   "network": "studionet",
   "chain_id_expected": 61999,
   "rpc_url": "https://studio.genlayer.com/api",
-  "mandate_os_address": null,
-  "project_vault_addresses": {},
-  "deploy_transaction_ids": [],
+  "mandate_os_address": "0x32698630D6144882Bd0c1D5B00C74348c53ea58B",
+  "project_vault_addresses": {
+    "mandateos-demo-001": "0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4"
+  },
+  "deploy_transaction_ids": [
+    "0x8c5c53afc9e6f8958688df572e946dc8c3880133a388bf98640615e5fd1841a7",
+    "0xd42a4c5dcb6a25ba7909eb312239d21bc8c27ffa2ef4b3cd1c33e320b5931d39"
+  ],
   "verified_gen_transfer_ids": [],
-  "status": "NOT_DEPLOYED"
+  "status": "DEPLOYED_ADDRESSES_VERIFIED"
 }

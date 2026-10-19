@@ -13,5 +13,6 @@
   "pending_fee_quote_wei": null,
   "pending_transaction_id": null,
   "remaining_wei": "10000000000000000000",
-  "status": "PREPARED_NO_SPEND"
+  "status": "PREPARED_NO_SPEND",
+  "last_settled_transaction_id": "0xd42a4c5dcb6a25ba7909eb312239d21bc8c27ffa2ef4b3cd1c33e320b5931d39"
 }
