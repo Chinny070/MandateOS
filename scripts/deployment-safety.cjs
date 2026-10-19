@@ -5,27 +5,6 @@ const GEN = 10n ** 18n;
 const TOTAL_CEILING_WEI = 10n * GEN;
 const FIRST_TEST_VALUE_CEILING_WEI = 10n ** 16n;
 
-function feeOptionsFromProfile(profileEntry, appealRounds = 1) {
-  if (!profileEntry || typeof profileEntry !== "object") throw new Error("Measured fee profile entry is required.");
-  for (const field of ["leaderTimeunitsAllocation", "validatorTimeunitsAllocation", "executionBudgetPerRound"]) {
-    if (!/^\d+$/.test(String(profileEntry[field] ?? ""))) throw new Error(`Invalid measured fee profile field: ${field}`);
-  }
-  const rotationsPerRound = String(profileEntry.rotationsPerRound ?? "");
-  if (!/^\d+$/.test(rotationsPerRound) || !Number.isSafeInteger(appealRounds) || appealRounds < 0 || appealRounds > 2) {
-    throw new Error("Measured rotations and bounded appeal-round count are required.");
-  }
-  const totalMessageFees = String(profileEntry.totalMessageFees ?? "0");
-  if (!/^\d+$/.test(totalMessageFees)) throw new Error("Invalid measured child-message fee budget.");
-  return {
-    leaderTimeunitsAllocation: BigInt(profileEntry.leaderTimeunitsAllocation),
-    validatorTimeunitsAllocation: BigInt(profileEntry.validatorTimeunitsAllocation),
-    executionBudgetPerRound: BigInt(profileEntry.executionBudgetPerRound),
-    totalMessageFees: BigInt(totalMessageFees),
-    appealRounds: BigInt(appealRounds),
-    rotations: Array.from({ length: appealRounds + 1 }, () => BigInt(rotationsPerRound)),
-  };
-}
-
 function readJson(filePath, fallback) {
   try { return JSON.parse(fs.readFileSync(filePath, "utf8")); }
   catch (error) {
@@ -171,4 +150,4 @@ function assertNoUnresolvedDeployment(record) {
   }
 }
 
-module.exports = { GEN, TOTAL_CEILING_WEI, FIRST_TEST_VALUE_CEILING_WEI, feeOptionsFromProfile, readJson, atomicWriteJson, acquireExclusiveLock, jsonSafe, reserveFeeQuote, settleFeeReservation, reserveTestValue, settleTestValueReservation, assertBudgetLedger, assertNoUnresolvedDeployment };
+module.exports = { GEN, TOTAL_CEILING_WEI, FIRST_TEST_VALUE_CEILING_WEI, readJson, atomicWriteJson, acquireExclusiveLock, jsonSafe, reserveFeeQuote, settleFeeReservation, reserveTestValue, settleTestValueReservation, assertBudgetLedger, assertNoUnresolvedDeployment };

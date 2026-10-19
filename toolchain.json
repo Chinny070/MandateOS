@@ -8,8 +8,10 @@
     "version": "0.39.1",
     "on_path": true,
     "network": "studionet",
-    "deployment_mode": "custom ordered script required; direct deploy waits only for ACCEPTED in inspected implementation",
-    "estimate_fees_command": "unavailable: unknown command"
+    "active_account_alias": "my-studionet-wallet",
+    "bundled_genlayer_js": "1.1.8",
+    "deployment_mode": "ordered deploy/*.js script runner; direct --contract path waits only for ACCEPTED",
+    "estimate_fees_command": "unavailable in installed 0.39.1; legacy route estimates EVM gas and uses eth_gasPrice"
   },
   "application_sdk": {
     "package": "genlayer-js",
@@ -36,8 +38,9 @@
     "rpc_url": "https://studio.genlayer.com/api",
     "raw_rpc_eth_chain_id": "0xf22f",
     "genlayer_js_eth_chain_id": "0xf22f",
-    "fee_estimation": "BLOCKED: sim_getFeeConfig returned JSON-RPC -32601",
+    "legacy_cli_fee_observation": "read-only eth_gasPrice returned 0x0; SpecLock deployment receipt effectiveGasPrice 0x0, gasUsed 0x7a1200; not a future cost guarantee",
+    "application_sdk_fee_policy": "GenLayerJS 2.0.0-rc.1 sim_getFeeConfig returned JSON-RPC -32601; dashboard writes remain fail-closed",
     "writes_attempted": false
   },
-  "limits": "The current installed SDK is a release candidate. StudioNet chain identity is read-only verified, but the fee policy endpoint needed for SDK quotes is unavailable, and the installed CLI has no estimate-fees command. No signing, deployment or GEN transfer occurred. Direct Mode is not live validator consensus."
+  "limits": "MandateOS deployment script uses the proven legacy CLI route and checks finalized receipts plus actual EVM gas fees under a 10 GEN cap. No signer unlock, signature, deployment, or GEN transfer occurred. SpecLock proof is external. Dashboard fee estimation and child-message fee sufficiency remain unverified. Direct Mode is not live validator consensus."
 }

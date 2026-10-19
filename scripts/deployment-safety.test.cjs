@@ -16,20 +16,6 @@ function emptyBudget() {
   };
 }
 
-test("fee profile becomes bounded live-estimator inputs without numeric precision loss", () => {
-  const options = safety.feeOptionsFromProfile({
-    leaderTimeunitsAllocation: "100",
-    validatorTimeunitsAllocation: "200",
-    executionBudgetPerRound: "9007199254740993",
-    totalMessageFees: "700",
-    rotationsPerRound: "1",
-  }, 1);
-  assert.equal(options.executionBudgetPerRound, 9007199254740993n);
-  assert.deepEqual(options.rotations, [1n, 1n]);
-  assert.throws(() => safety.feeOptionsFromProfile({ leaderTimeunitsAllocation: "1.2" }), /Invalid measured/);
-  assert.throws(() => safety.feeOptionsFromProfile({ leaderTimeunitsAllocation: "1", validatorTimeunitsAllocation: "1", executionBudgetPerRound: "1", rotationsPerRound: "1" }, 3), /bounded/);
-});
-
 test("cumulative fee quotes reserve against the fixed 10 GEN ceiling", () => {
   const first = safety.reserveFeeQuote(emptyBudget(), 3n * 10n ** 18n);
   assert.equal(first.committed_fees_wei, (3n * 10n ** 18n).toString());

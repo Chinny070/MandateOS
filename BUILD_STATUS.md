@@ -1,47 +1,54 @@
 # Build and deployment preparation status — 2026-10-19
 
-**Branch:** `codex/onchain-governance` | **Starting commit:** `2a353b92668954f2c3526ec84957dc28ca4fe3ef` | **Release verdict:** **NO-GO for a controlled StudioNet deployment or any GEN transfer in the current toolchain. Production: NO-GO.**
-**This turn:** no wallet signing, deployment, or GEN movement.
+**Branch:** `codex/onchain-governance` | **Starting HEAD:** `60c4d84b83da4958463c79d95611ac483fe9e142` | **Final HEAD:** recorded below after push. `main` remains unchanged.
+**Verdicts:** **CONDITIONAL GO for an explicitly authorized, deployment-only StudioNet demonstration. NO-GO for a financial test or production.**
+**This task:** no MandateOS deployment, wallet unlock, transaction signature, contract write, or GEN transfer.
 
-## What changed
+## Implementation
 
-- Pinned the dashboard to `genlayer-js@2.0.0-rc.1` and routed all four wallet write paths through one StudioNet chain check and fee submission helper. It carries the SDK's `messageAllocations` through unchanged and refuses to submit if a fee estimate fails or lacks required fields. It reports StudioNet's unsupported `sim_getFeeConfig` method directly and sends no transaction in that case.
-- Read-only live integration identified that StudioNet chain identity works, but the SDK's fee-policy request fails because the RPC does not expose `sim_getFeeConfig` (`-32601 Method not found`). The GenLayer CLI is `0.39.1`; it has no `estimate-fees` command. No fee estimate is available, so the deployment script blocks.
-- Added ordered Core then ProjectVault deployment automation using the current SDK, explicit chain ID and project ID checks, measured source-matched deploy fee profile, 10 GEN cumulative budget ledger, fee reservations, transaction journaling, finality and execution success checks, and no retry on unknown/failed outcomes. It will not run without separate user approval and a deployment-specific gate.
-- Added an operational budget ledger for actual fees, committed fee quotes, actual test-value amounts, committed/unknown test value, unknown fee liabilities and remaining ceiling. The first financial verification value is capped at 0.01 GEN. Current actual/committed amounts are zero.
-- Added two-wallet/governance and stop-condition analysis in [PREDEPLOYMENT_READINESS.md](docs/PREDEPLOYMENT_READINESS.md).
+- Inspected SpecLock's actual deployment record, CLI notes, constructor-argument failure analysis, live receipts and withdrawal evidence. A read-only lookup of SpecLock's deployment returned `FINALIZED`, `MAJORITY_AGREE`, leader `SUCCESS`, and the expected contract address. Its EVM receipt was successful, with 8,000,000 gas and zero effective gas price for that exact transaction.
+- Replaced the MandateOS deployment's GenLayerJS 2.0.0-rc.1 fee-policy dependency with the installed GenLayer CLI 0.39.1 script runner and its bundled GenLayerJS 1.1.8. This route is confirmed by the successful SpecLock transaction. The direct CLI `--contract` path only waits for `ACCEPTED`; the MandateOS wrapper instead calls the ordered `deploy/*.js` runner and polls `FINALIZED`.
+- Core is deployed first with `args: []`. ProjectVault receives `[coreAddress, exactProjectIdString]`. This avoids CLI shell parsing that converts digit-only strings to numbers and avoids the documented mistake of passing `--args '[]'` as one constructor argument.
+- The script checks the existing active alias, configured StudioNet, chain ID, clean development branch/worktree, explicit authorization, source hashes and 10 GEN budget. It rejects the legacy SDK's gas-estimation fallback, checks every signed request's actual gas limit and price before signing, blocks nonzero deployment value or a wrong destination, and records the per-transaction fee cap. It then requires finalized majority agreement, leader execution success, deployed address, and a matching successful EVM receipt. Unknown outcomes preserve the journal and budget liability; no blind retries are allowed.
+- The deployment budget remains 10 GEN maximum; current actual/committed expenditure is 0. The first financial test value remains capped at 0.01 GEN and is not part of the deployment script.
+- SpecLock's finalized parent exposes a triggered child ID. The child receipt identifies the exact sender, recipient, amount, `FINALIZED` status and `value_credited: true`, despite result label `NO_MAJORITY`; SpecLock separately records a matching beneficiary balance delta. This is reusable receipt evidence. MandateOS's keeper does not yet consume this path, and MandateOS has not paid a beneficiary; EOA settlement stays unverified.
 
 ## Verification
 
 - `python -m compileall -q contracts reference keeper tests` — passed.
 - `python -m pytest -q` — **116 passed**.
-- `python -m pytest tests/direct -q` — **39 passed** (subset of the full Python suite).
-- `PYTHONIOENCODING=utf-8 genvm-lint contracts/mandate_os.py` — passed, 3 checks.
-- `PYTHONIOENCODING=utf-8 genvm-lint contracts/project_vault.py` — passed, 3 checks.
-- `cd web; npm test` — **12 passed** after final fee-path regression additions.
-- `cd web; npm run typecheck` — passed.
-- `cd web; npm run build` — passed; main chunk 865.67 kB minified / 206.72 kB gzip, non-blocking size warning.
-- `node --check deploy/01_studionet.js`, `node --check scripts/deployment-safety.cjs`, and `node --test scripts/deployment-safety.test.cjs` — passed; 8 deployment-safety tests.
-- `git diff --check` — passed after final implementation and documentation edits.
-- Read-only raw RPC `eth_chainId` — `0xf22f` (61999).
-- Read-only GenLayerJS RPC `eth_chainId` — `0xf22f`; `getCurrentFeePolicy()` failed with JSON-RPC `-32601`, `sim_getFeeConfig` not found.
-- `genlayer estimate-fees --rpc https://studio.genlayer.com/api --json` — CLI error: unknown command `estimate-fees`.
+- `python -m pytest tests/direct -q` — **39 passed**.
+- Core GenVM `check` — passed, 3 checks; `validate` — passed, 58 methods (20 views, 38 writes).
+- ProjectVault GenVM `check` — passed, 3 checks; `validate` — passed, 64 methods (35 views, 29 writes).
+- `cd web; npm test` — **12 passed**; `npm run typecheck` — passed; `npm run build` — passed. Main JS chunk: 865.67 kB minified / 206.72 kB gzip, non-blocking Vite size warning.
+- `node --check deploy/01_studionet.js` and `node --check deploy/cli-deployment.cjs` — passed.
+- `node --test scripts/deployment-runner.test.cjs scripts/cli-deployment.test.cjs scripts/deployment-safety.test.cjs` — **13 passed**, including isolated temp-repository dry runs of Core→Vault journaling, exact constructor strings, finalized receipt/fee processing and refusal of the SDK gas fallback before signing. The dry run uses a fixture signer only and does not access StudioNet or represent live proof.
+- PowerShell parser check for `scripts/deploy-studionet.ps1` — passed. Toolchain JSON parsing and `git diff --check` — passed.
+- CLI read-only checks: version `0.39.1`; bundled SDK `1.1.8`; network `studionet`, chain `61999`, RPC `https://studio.genlayer.com/api`; active account alias `my-studionet-wallet`.
+- StudioNet read-only checks: `eth_chainId=0xf22f`, current `eth_gasPrice=0x0`. These do not estimate future MandateOS fees. The GenLayerJS v2 `sim_getFeeConfig` method remains unsupported and CLI 0.39.1 has no `estimate-fees` command.
+- GenVM lint attempted its remote version check and received Windows `WinError 10013`; both lint and validation completed successfully from the locally cached runner. This is a host socket restriction, not evidence of StudioNet failure.
 
-Local Python/Direct Mode, lint, frontend and deployment-helper tests do not establish validator consensus, deployment, fee payment, child execution, GEN settlement, or wallet readiness. The ordinary sandbox environment reports `CODEX_SANDBOX_NETWORK_DISABLED=1`; the read-only RPC requests above used the approved network-enabled execution path. This is a sandbox boundary, not a StudioNet outage.
+The script was not run against MandateOS because deployment, wallet unlock and signing were expressly prohibited. Local tests and SpecLock's separate live deployment are not MandateOS validator or financial proof.
 
-## Readiness
+## Readiness and blockers
 
-| Area | Status | Evidence / blocker |
+| Area | Status | Evidence / limitation |
 |---|---|---|
-| Contract regressions and static checks | PASS LOCALLY | 116 Python tests, including 39 Direct Mode; both contract lints. |
-| Dashboard fee-aware writes | PARTIAL / FAIL CLOSED | Fee estimator and allocation wiring tested; current StudioNet RPC lacks the fee-policy method the pinned v2 release-candidate SDK requires, so writes do not submit. |
-| Automated two-contract deployment | PREPARED, BLOCKED | Sequence and journal implemented; no compatible fee policy endpoint, no measured StudioNet fee profile, signer locked, and deployment not authorized. |
-| Chain identity | READ-ONLY VERIFIED | Raw RPC and SDK return chain ID `0xf22f`; no state-changing call. |
-| Signer | NOT READY | Existing configured account is encrypted and locked; no unlock was attempted. |
-| Two genuine DAO wallets | NOT CONFIRMED | Local aliases do not prove two distinct user-controlled StudioNet wallets. |
-| GEN budget | PREPARED, UNSPENT | 10 GEN ceiling; fees/value/liabilities/actual expenditure are zero. First test-value cap: 0.01 GEN. |
-| Controlled demonstration | NO-GO CURRENTLY | Fee API/profile, signer, second member and live compatibility checks remain. |
-| Production | NO-GO | EOA settlement linkage, IC beneficiary live test, live governance, evidence consensus, child failure recovery, independent security review and operational policies remain. |
-| Main | UNCHANGED | No merge or write to `main`. |
+| MandateOS deployment method | PREPARED / LOCALLY VERIFIED | CLI script runner, typed constructor values, ordered Core→Vault, finalized receipt check, actual EVM fee reconciliation, journal and no-retry guard. Not live-executed for MandateOS. |
+| Current EVM deployment fee | OBSERVED, NOT FORECAST | SpecLock transaction effective gas price 0; current StudioNet `eth_gasPrice` 0. A fresh signed gas cap and actual receipt will be recorded at an authorized run. |
+| Other protocol or child-message fees | NOT VERIFIED FOR FINANCIAL WRITES | Installed legacy CLI deploy route has no v0.6 GenVM fee preset. It is proven for SpecLock deployment, not for MandateOS financing/emitted messages. Dashboard v2 fee writes remain fail-closed. |
+| Signer | CONFIGURED, LOCKED / NOT UNLOCKED | Active alias confirmed; local encrypted key remains locked per prior safe inspection. The CLI will prompt locally only after authorization. |
+| Two genuine DAO wallets | NOT CONFIRMED | No distinct second genuine signer has been confirmed. Required before sensitive governance and finance. |
+| EOA payout reconciliation | REUSABLE PROTOCOL EVIDENCE; MandateOS ADAPTER NOT IMPLEMENTED | SpecLock proves triggered-child IDs and a value-credited EOA transfer. MandateOS keeper still reports EOA payment as unverified. |
+| First 0.01 GEN value transfer | NOT AUTHORIZED / NOT EXECUTED | Separate approval required. |
+| Financial demonstration | NO-GO | Two real wallets, dashboard fee-compatible writes and MandateOS child receipt reconciliation are outstanding. |
+| Production | NO-GO | No MandateOS live deployment, live governance/financing, IC beneficiary payout, validator-backed evidence, child-failure recovery, or independent audit. |
+| Main | UNCHANGED | No merge or push to `main`. |
 
-See [LIVE_PROOFS.md](LIVE_PROOFS.md) for live versus local evidence, [PREDEPLOYMENT_READINESS.md](docs/PREDEPLOYMENT_READINESS.md) for the staged runbook and [TEST_MATRIX.md](docs/TEST_MATRIX.md) for the test evidence classes.
+## Final repository revision
+
+- Development branch: `codex/onchain-governance`.
+- Pushed commit: **to be filled after the verified commit is pushed**.
+- GitHub branch-head check: pending final push.
+
+See [LIVE_PROOFS.md](LIVE_PROOFS.md), [PREDEPLOYMENT_READINESS.md](docs/PREDEPLOYMENT_READINESS.md), and [TEST_MATRIX.md](docs/TEST_MATRIX.md) for the external reference evidence, exact run sequence and evidence classes.

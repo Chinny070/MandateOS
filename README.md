@@ -6,13 +6,13 @@ The repository also contains a noncustodial, read-only StudioNet keeper and a Re
 
 ## Release status
 
-The project is **not ready for deployment**. The raw RPC and GenLayerJS read-only chain identity requests returned StudioNet chain ID `0xf22f`; however, the SDK fee-policy request currently fails because StudioNet returns `-32601 Method not found` for `sim_getFeeConfig`, and the installed CLI has no fee-estimation command. Deployment and wallet writes are gated until fee allocation can be measured and quoted. No MandateOS or ProjectVault deployment, deposit, refund, payout, repayment, or distribution is recorded in this repository's live proof log.
+MandateOS itself is **not deployed**. A separate SpecLock deployment on StudioNet now supplies a verified reference for the installed GenLayer CLI 0.39.1 route. MandateOS's ordered deploy script uses the CLI's bundled GenLayerJS 1.1.8, waits for `FINALIZED`, checks majority consensus and leader execution success, journals both contract stages, and reconciles the actual EVM receipt fee. This route does not depend on GenLayerJS 2.0.0-rc.1's unsupported `sim_getFeeConfig` call. A deployment-only attempt is conditional on explicit authorization, the active existing signer being unlocked by the CLI prompt, source and constructor checks, and the cumulative 10 GEN guard. No MandateOS deployment or GEN movement has been performed.
 
-EOA milestone payouts remain unsuitable for production settlement. The supported GenLayer SDK exposes internal IC message child IDs but not a causally linked receipt for the external EOA value transfer. Such a payment remains pending or value-at-risk; it cannot be marked successful or retried automatically.
+SpecLock's live StudioNet withdrawal evidence demonstrates a parent-to-triggered-child relationship with an exact EOA recipient, amount, finalized child receipt and `value_credited: true`. This provides a concrete receipt pattern for a future MandateOS keeper adapter. MandateOS has not yet wired this observation into its reconciler or run its own beneficiary payout, so its EOA milestone payouts remain unverified and cannot be marked successful or retried automatically.
 
 The configured EOA beneficiary can sign a separate ProjectVault acknowledgment for the exact payment ID and expected amount. The onchain record proves that the beneficiary wallet attested to receipt; it does not change payout settlement status or reservations and is not independent settlement evidence.
 
-Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [docs/PREDEPLOYMENT_READINESS.md](docs/PREDEPLOYMENT_READINESS.md) for verified results, fee and signer blockers, budget controls, the gated deployment flow, and the small-value runbook. The older [deployment audit](docs/DEPLOYMENT_READINESS.md) remains historical; the newer readiness report records the current SDK/RPC results.
+Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [docs/PREDEPLOYMENT_READINESS.md](docs/PREDEPLOYMENT_READINESS.md) for the verified CLI route, current fee observations and limits, signer status, budget controls, deployment sequence and remaining financial-test blockers. The older [deployment audit](docs/DEPLOYMENT_READINESS.md) remains historical.
 
 ## Repository layout
 
@@ -20,7 +20,7 @@ Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [
 - `contracts/project_vault.py` — project funding custody, agreement and milestone records, reserved payouts/refunds/distributions, payable repayments and revenue, default and closure guards.
 - `keeper/` — StudioNet-pinned RPC reader, durable SQLite observation archive, reconciliation classifications, alerts and reports. It never signs or sends GEN.
 - `web/` — real-data dashboard. Core and vault indexes allow recent proposal, project and vault record discovery. User-signed writes use GenLayerJS fee estimation and preserve child-message allocations; they fail closed while StudioNet's current fee-policy RPC method is unavailable.
-- `deploy/` and `scripts/` — explicit-gate two-contract deployment script, read-only StudioNet/fee compatibility check and cumulative 10 GEN operational budget helpers.
+- `deploy/` and `scripts/` — explicit-gate ordered CLI script-runner deployment, per-signature EVM gas caps, finalized receipt checks, deployment journals and the cumulative 10 GEN operational budget.
 - `tests/` — Direct Mode contract tests, keeper/RPC adapter tests, and frontend state-mapping tests. Test fixtures are local evidence only.
 - `docs/` — architecture, financial model, test matrix and readiness documentation.
 

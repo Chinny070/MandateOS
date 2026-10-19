@@ -24,13 +24,23 @@ if ($LASTEXITCODE -ne 0 -or $NetworkInfo -notmatch "alias:\s*'studionet'" -or
     $NetworkInfo -notmatch "chainId:\s*'61999'" -or $NetworkInfo -notmatch [regex]::Escape($ExpectedRpc)) {
   throw "Configured GenLayer CLI network does not match StudioNet / chain 61999 / the approved RPC."
 }
-$FeeProfile = Join-Path $RepoRoot "deployments/studionet-fee-profile.json"
-if (-not (Test-Path -LiteralPath $FeeProfile)) {
-  throw "A measured deploy fee profile with provenance matching the current contract sources is missing. No transaction submitted."
+$ActiveAccount = (& genlayer config get activeAccount 2>&1 | Out-String)
+if ($LASTEXITCODE -ne 0 -or $ActiveAccount -notmatch "activeAccount=my-studionet-wallet") {
+  throw "The active CLI account is not the existing my-studionet-wallet signer. No transaction submitted."
+}
+$CliInstall = Join-Path $env:APPDATA "npm/node_modules/genlayer"
+$CliSdkPackage = Join-Path $CliInstall "node_modules/genlayer-js/package.json"
+if (-not (Test-Path -LiteralPath $CliSdkPackage)) { throw "Could not locate the GenLayer CLI's bundled SDK for compatibility verification." }
+$CliSdkVersion = (Get-Content -LiteralPath $CliSdkPackage -Raw | ConvertFrom-Json).version
+if ($CliSdkVersion -ne "1.1.8") {
+  throw "Expected the verified CLI-bundled genlayer-js 1.1.8; found '$CliSdkVersion'. Re-audit before signing."
 }
 
 Push-Location $RepoRoot
 try {
+  # With no --contract, CLI 0.39.1 runs the ordered deploy/*.js scripts using
+  # its configured active account. This preserves typed string constructor args
+  # and lets the script wait for FINALIZED rather than the direct CLI's ACCEPTED.
   & genlayer deploy --rpc $ExpectedRpc
   $CliExit = $LASTEXITCODE
   $RecordPath = Join-Path $RepoRoot "deployments/studionet-deployment-record.json"
@@ -43,6 +53,6 @@ try {
       -not $Record.contracts.core.contract_address -or -not $Record.contracts.vault.contract_address) {
     throw "Finalized deployment journal is incomplete. Stop and reconcile before further activity."
   }
-  Write-Output "Both deployment receipts finalized successfully. Use the journal for addresses, hashes, source digests and fee reconciliation."
+  Write-Output "Both deployment receipts finalized with successful execution. Use the journal for addresses, hashes, source digests and EVM fee reconciliation."
 }
 finally { Pop-Location }
