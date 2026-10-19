@@ -1,6 +1,6 @@
 # Build status — 2026-10-19
 
-This status separates local verification from StudioNet evidence. The current work is on `codex/onchain-governance`, based on branch HEAD `d73bbc78f00b09236e7a0016d8036c9247bbf75c`. `main` is not changed. The implementation commit and its documentation follow-up will be recorded below after push verification.
+This status separates local verification from StudioNet evidence. The code and test commit `c830960558e635b24a48dbd030d33cc172eff5cc` was pushed as a fast-forward from `d73bbc78f00b09236e7a0016d8036c9247bbf75c`; GitHub independently reported it as the `codex/onchain-governance` head. The remote `main` head remains `4b446f04bb811c985230dee55b904e73412438b1`. This status/proof update is a separate documentation-only follow-up.
 
 | Gate / stage | State | Verified evidence and remaining work |
 |---|---|---|
@@ -23,7 +23,8 @@ This status separates local verification from StudioNet evidence. The current wo
 - `cd web; npm run typecheck` — passed.
 - `cd web; npm test` — 4 passed.
 - `cd web; npm run build` — passed. Vite emitted a non-blocking warning that the main minified chunk is approximately 769 kB (187 kB gzip).
-- `git diff --check` and secret review — to be recorded after final review.
+- `git diff --cached --check` — passed.
+- Secret review of changed contract, keeper, test, and frontend files — no credentials or wallet secrets found.
 
 The Python suite includes local Direct Mode and deterministic fixture tests; none of the 109 tests submits to StudioNet. Frontend tests only map data states and formatting. Build/test success does not claim live UI state or GEN settlement.
 
