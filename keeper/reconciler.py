@@ -36,6 +36,8 @@ class TransferObservation:
     recipient_kind: str = "IC"
     destination_balance_before_wei: int | None = None
     destination_balance_after_wei: int | None = None
+    source_balance_before_wei: int | None = None
+    source_balance_after_wei: int | None = None
     destination_recorded_amount_wei: int | None = None
 
 
@@ -57,6 +59,13 @@ def reconcile_transfer(observation: TransferObservation) -> Reconciliation:
         if observation.parent_status.upper() in {"FAILED", "REVERTED"}:
             return Reconciliation(TransferState.PARENT_FAILED, "parent failed; no child settlement is assumed")
         return Reconciliation(TransferState.UNKNOWN, "parent status is not recognized")
+    if observation.recipient_kind == "EOA":
+        return Reconciliation(
+            TransferState.UNKNOWN,
+            "supported APIs do not expose a causally linked external EOA transfer receipt",
+        )
+    if observation.recipient_kind != "IC":
+        return Reconciliation(TransferState.UNKNOWN, "recipient kind is not recognized")
     if not observation.child_tx_id or not observation.child_status:
         return Reconciliation(TransferState.UNKNOWN, "finalized parent has no independently identified child receipt")
     child_status = observation.child_status.upper()
@@ -81,8 +90,6 @@ def reconcile_transfer(observation: TransferObservation) -> Reconciliation:
             TransferState.UNKNOWN,
             "receipt source and destination cannot be causally linked to the finalized parent",
         )
-    if observation.recipient_kind not in {"IC", "EOA"}:
-        return Reconciliation(TransferState.UNKNOWN, "recipient kind is not recognized")
     if observation.recipient_kind == "IC" and observation.destination_recorded_amount_wei is None:
         return Reconciliation(TransferState.CHILD_SUCCESS, "child succeeded; destination contract state not yet reconciled")
     if (observation.recipient_kind == "IC"
@@ -94,4 +101,11 @@ def reconcile_transfer(observation: TransferObservation) -> Reconciliation:
         return Reconciliation(TransferState.CHILD_SUCCESS, "destination record matches; independent balance delta is missing")
     if after - before != observation.amount_wei:
         return Reconciliation(TransferState.VALUE_AT_RISK, "destination balance delta does not match transfer amount")
+    source_before = observation.source_balance_before_wei
+    source_after = observation.source_balance_after_wei
+    if source_before is not None or source_after is not None:
+        if source_before is None or source_after is None:
+            return Reconciliation(TransferState.UNKNOWN, "source balance snapshot is incomplete")
+        if source_before - source_after != observation.amount_wei:
+            return Reconciliation(TransferState.VALUE_AT_RISK, "source balance delta does not match transfer amount")
     return Reconciliation(TransferState.VERIFIED, "parent, child, destination record, and balance delta agree")

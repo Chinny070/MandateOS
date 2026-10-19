@@ -100,7 +100,7 @@ def test_chain_mismatch_never_returns_receipt_data():
         )
 
 
-def test_wrong_external_source_or_value_is_value_at_risk_even_without_parent_link():
+def test_unlinked_external_candidate_mismatch_does_not_change_payment_status():
     results = fixture_results()
     results["eth_getTransactionByHash"] = {
         "hash": EXTERNAL, "from": "0x" + "cc" * 20,
@@ -115,7 +115,7 @@ def test_wrong_external_source_or_value_is_value_at_risk_even_without_parent_lin
         destination_address=DESTINATION,
         amount_wei=100,
     )
-    assert result.reconciliation_state == "VALUE_AT_RISK"
+    assert result.reconciliation_state == "UNKNOWN"
 
 
 def test_failed_external_receipt_is_recorded_as_failed_without_retry():
@@ -133,7 +133,7 @@ def test_failed_external_receipt_is_recorded_as_failed_without_retry():
         amount_wei=100,
     )
     assert result.external_status == "FAILED"
-    assert result.reconciliation_state == "CHILD_FAILED"
+    assert result.reconciliation_state == "UNKNOWN"
     assert all(request["method"] != "eth_sendRawTransaction" for request in requests)
 
 
@@ -150,4 +150,4 @@ def test_external_transfer_without_receipt_remains_pending():
         amount_wei=100,
     )
     assert result.external_status == "PENDING"
-    assert result.reconciliation_state == "PENDING"
+    assert result.reconciliation_state == "UNKNOWN"

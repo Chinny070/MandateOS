@@ -1,0 +1,612 @@
+import { useMemo, useState } from "react";
+import { createClient } from "genlayer-js";
+import { studionet } from "genlayer-js/chains";
+import { TransactionHashVariant } from "genlayer-js/types";
+import {
+  formatUtcTimestamp,
+  formatWei,
+  mapEoaSettlementState,
+  mapTransactionState,
+  serialize,
+} from "./models";
+
+type QueryResult = { ok: true; value: unknown } | { ok: false; error: string };
+type DashboardData = Record<string, QueryResult>;
+type KeeperReport = {
+  chain_id: string;
+  generated_at?: string;
+  watches: Array<Record<string, unknown>>;
+  alerts: Array<Record<string, unknown>>;
+  transaction_edges?: Array<Record<string, unknown>>;
+  audit_events?: Array<Record<string, unknown>>;
+  spending_authority?: boolean;
+  automatic_retry?: boolean;
+};
+
+type Handles = {
+  mandateAddress: string;
+  vaultAddress: string;
+  projectId: string;
+  memberAddress: string;
+  proposalId: string;
+  allocationId: string;
+  refundId: string;
+  milestoneId: string;
+  paymentId: string;
+  repaymentId: string;
+  distributionId: string;
+  revenuePeriodId: string;
+  transactionId: string;
+};
+
+const emptyHandles: Handles = {
+  mandateAddress: import.meta.env.VITE_MANDATE_OS_ADDRESS ?? "",
+  vaultAddress: import.meta.env.VITE_PROJECT_VAULT_ADDRESS ?? "",
+  projectId: import.meta.env.VITE_PROJECT_ID ?? "",
+  memberAddress: "",
+  proposalId: "",
+  allocationId: "",
+  refundId: "",
+  milestoneId: "",
+  paymentId: "",
+  repaymentId: "",
+  distributionId: "",
+  revenuePeriodId: "",
+  transactionId: "",
+};
+
+const STORAGE_KEY = "mandateos.query-handles.v1";
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const HASH = /^0x[0-9a-fA-F]{64}$/;
+
+declare global {
+  interface Window {
+    ethereum?: { request: (request: { method: string; params?: unknown[] }) => Promise<unknown> };
+  }
+}
+
+function initialHandles(): Handles {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    return { ...emptyHandles, ...(saved && typeof saved === "object" ? saved : {}) };
+  } catch {
+    return emptyHandles;
+  }
+}
+
+function asArray(value: unknown): unknown[] | null {
+  return Array.isArray(value) ? value : null;
+}
+
+function readable(value: unknown): string {
+  if (typeof value === "bigint") return value.toString();
+  if (value === null || value === undefined || value === "") return "Not recorded";
+  return typeof value === "object" ? serialize(value) : String(value);
+}
+
+function rowsFor(value: unknown, labels?: string[]): Array<[string, string]> {
+  const tuple = asArray(value);
+  if (tuple) {
+    return tuple.map((item, index) => {
+      const label = labels?.[index] ?? `Field ${index + 1}`;
+      if (/\(UTC\)/i.test(label)) return [label, formatUtcTimestamp(item)];
+      if (/\(wei\)/i.test(label)) return [label, `${readable(item)} wei · ${formatWei(item)}`];
+      return [label, readable(item)];
+    });
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, readable(item)]);
+  }
+  return [["Onchain value", readable(value)]];
+}
+
+function DataPanel({
+  title,
+  detail,
+  result,
+  labels,
+}: {
+  title: string;
+  detail?: string;
+  result?: QueryResult;
+  labels?: string[];
+}) {
+  return (
+    <article className="panel">
+      <div className="panel-heading">
+        <div>
+          <h3>{title}</h3>
+          {detail && <p>{detail}</p>}
+        </div>
+        <span className={`query-tag ${result?.ok ? "tag-live" : "tag-muted"}`}>
+          {result?.ok ? "RPC read" : "Unavailable"}
+        </span>
+      </div>
+      {!result ? (
+        <p className="empty-state">Add the relevant contract address or record ID to inspect onchain state.</p>
+      ) : result.ok ? (
+        <dl className="data-list">
+          {rowsFor(result.value, labels).map(([label, value]) => (
+            <div className="data-row" key={label}>
+              <dt>{label}</dt><dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="unavailable">Read failed: {result.error}</p>
+      )}
+    </article>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function SectionHeading({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
+  return (
+    <div className="section-heading">
+      <div className="eyebrow">{eyebrow}</div>
+      <h2>{title}</h2>
+      <p>{text}</p>
+    </div>
+  );
+}
+
+export function App() {
+  const [handles, setHandles] = useState<Handles>(initialHandles);
+  const [wallet, setWallet] = useState("");
+  const [dashboard, setDashboard] = useState<DashboardData>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [message, setMessage] = useState("");
+  const [transaction, setTransaction] = useState<Record<string, unknown> | null>(null);
+  const [triggeredIds, setTriggeredIds] = useState<string[]>([]);
+  const [keeperReport, setKeeperReport] = useState<KeeperReport | null>(null);
+  const [reportError, setReportError] = useState("");
+
+  const readClient = useMemo(() => createClient({ chain: studionet }), []);
+  const effectiveMemberAddress = handles.memberAddress || wallet;
+  const discoveredVault = dashboard.registeredVault?.ok ? String(dashboard.registeredVault.value) : "";
+  const effectiveVault = handles.vaultAddress || (ADDRESS.test(discoveredVault) ? discoveredVault : "");
+
+  function update<K extends keyof Handles>(key: K, value: Handles[K]) {
+    setHandles((current) => {
+      const next = { ...current, [key]: value };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  async function query(
+    data: DashboardData,
+    key: string,
+    contract: string,
+    functionName: string,
+    args: unknown[] = [],
+  ) {
+    if (!ADDRESS.test(contract)) return;
+    try {
+      const value = await readClient.readContract({
+        address: contract as `0x${string}`,
+        functionName,
+        args,
+        transactionHashVariant: TransactionHashVariant.LATEST_FINAL,
+      } as never);
+      data[key] = { ok: true, value };
+    } catch (error) {
+      data[key] = { ok: false, error: error instanceof Error ? error.message : "RPC read failed" };
+    }
+  }
+
+  async function refresh() {
+    setRefreshing(true);
+    setMessage("");
+    const next: DashboardData = {};
+    const mandate = handles.mandateAddress.trim();
+    const project = handles.projectId.trim();
+    try {
+      if (!ADDRESS.test(mandate)) {
+        setMessage("Enter a MandateOS Core address to read StudioNet state.");
+        setDashboard({});
+        return;
+      }
+      const coreReads: Promise<void>[] = [
+        query(next, "treasury", mandate, "get_treasury_summary"),
+        query(next, "mandate", mandate, "get_mandate_summary"),
+      ];
+      if (effectiveMemberAddress && ADDRESS.test(effectiveMemberAddress)) {
+        coreReads.push(query(next, "member", mandate, "get_member_weight", [effectiveMemberAddress]));
+      }
+      if (handles.proposalId.trim()) {
+        coreReads.push(query(next, "proposal", mandate, "get_proposal_summary", [handles.proposalId.trim()]));
+        coreReads.push(query(next, "proposalTiming", mandate, "get_proposal_timing", [handles.proposalId.trim()]));
+      }
+      if (handles.allocationId.trim()) {
+        coreReads.push(query(next, "allocation", mandate, "get_allocation_details", [handles.allocationId.trim()]));
+        coreReads.push(query(next, "allocationStatus", mandate, "get_allocation_status", [handles.allocationId.trim()]));
+        coreReads.push(query(next, "fundingStatus", mandate, "get_funding_status", [handles.allocationId.trim()]));
+      }
+      if (handles.refundId.trim()) {
+        coreReads.push(query(next, "treasuryRefund", mandate, "get_refund_status", [handles.refundId.trim()]));
+      }
+      if (project) {
+        coreReads.push(query(next, "registeredVault", mandate, "get_vault_address", [project]));
+        coreReads.push(query(next, "evidence", mandate, "get_evidence_receipt", [project]));
+      }
+      await Promise.all(coreReads);
+
+      const vault = handles.vaultAddress.trim() || (ADDRESS.test(String(next.registeredVault?.ok ? next.registeredVault.value : ""))
+        ? String(next.registeredVault?.ok ? next.registeredVault.value : "")
+        : "");
+      if (ADDRESS.test(vault)) {
+        const vaultReads: Promise<void>[] = [
+          query(next, "vaultBalance", vault, "get_balance_wei"),
+          query(next, "refundAvailable", vault, "get_refund_available_wei"),
+          query(next, "refundReserved", vault, "get_refund_reserved_wei"),
+          query(next, "agreement", vault, "get_agreement_summary"),
+          query(next, "distributionAvailable", vault, "get_distribution_available"),
+          query(next, "default", vault, "get_default_status"),
+          query(next, "defaultChallenge", vault, "get_default_challenge_ends_at"),
+          query(next, "canClose", vault, "can_close_agreement"),
+        ];
+        if (handles.milestoneId.trim()) {
+          vaultReads.push(query(next, "milestone", vault, "get_milestone_summary", [handles.milestoneId.trim()]));
+          vaultReads.push(query(next, "milestoneEvidence", vault, "get_milestone_evidence", [handles.milestoneId.trim()]));
+          vaultReads.push(query(next, "milestoneDispute", vault, "get_milestone_dispute_ends_at", [handles.milestoneId.trim()]));
+        }
+        if (handles.paymentId.trim()) {
+          vaultReads.push(query(next, "payout", vault, "get_payout_details", [handles.paymentId.trim()]));
+        }
+        if (handles.repaymentId.trim()) {
+          vaultReads.push(query(next, "repayment", vault, "get_repayment_status", [handles.repaymentId.trim()]));
+        }
+        if (handles.distributionId.trim()) {
+          vaultReads.push(query(next, "distribution", vault, "get_distribution_amounts", [handles.distributionId.trim()]));
+          vaultReads.push(query(next, "distributionStatus", vault, "get_distribution_status", [handles.distributionId.trim()]));
+        }
+        if (handles.refundId.trim()) {
+          vaultReads.push(query(next, "vaultRefund", vault, "get_refund_status", [handles.refundId.trim()]));
+        }
+        if (handles.revenuePeriodId.trim()) {
+          vaultReads.push(query(next, "revenue", vault, "get_revenue_period", [handles.revenuePeriodId.trim()]));
+        }
+        await Promise.all(vaultReads);
+      }
+      setDashboard(next);
+      setMessage("Read latest finalized contract state from StudioNet. No writes were submitted.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function connectWallet() {
+    try {
+      if (!window.ethereum) throw new Error("No browser wallet provider was found.");
+      const chain = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
+      if (chain !== "0xf22f") throw new Error("Switch the wallet to StudioNet (chain ID 61999), then reconnect.");
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (!Array.isArray(accounts) || typeof accounts[0] !== "string" || !ADDRESS.test(accounts[0])) {
+        throw new Error("The wallet did not return an account address.");
+      }
+      setWallet(accounts[0]);
+      setMessage("Wallet connected on StudioNet. The dashboard has not submitted a transaction.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Wallet connection failed.");
+    }
+  }
+
+  async function vote(support: boolean) {
+    try {
+      if (!window.ethereum || !wallet) throw new Error("Connect a StudioNet wallet first.");
+      if (!ADDRESS.test(handles.mandateAddress) || !handles.proposalId.trim()) {
+        throw new Error("A MandateOS address and proposal ID are required.");
+      }
+      const chain = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
+      if (chain !== "0xf22f") throw new Error("Wallet network changed; select StudioNet (61999) before voting.");
+      const writer: any = createClient({
+        chain: studionet,
+        account: wallet as `0x${string}`,
+        provider: window.ethereum,
+      });
+      const call = {
+        account: wallet as `0x${string}`,
+        address: handles.mandateAddress as `0x${string}`,
+        functionName: "vote",
+        args: [handles.proposalId.trim(), support],
+      };
+      const estimate = await writer.estimateTransactionFeesForWrite(call);
+      const txId = await writer.writeContract({
+        ...call,
+        fees: { distribution: estimate.distribution, feeValue: estimate.feeValue },
+      });
+      update("transactionId", String(txId));
+      setMessage(`Vote transaction submitted: ${txId}. Submission is not confirmation; inspect its final status below.`);
+      await inspectTransaction(String(txId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Vote submission failed.");
+    }
+  }
+
+  async function inspectTransaction(txId = handles.transactionId.trim()) {
+    setTransaction(null);
+    setTriggeredIds([]);
+    if (!HASH.test(txId)) {
+      setMessage("Enter a 32-byte GenLayer transaction ID to inspect it.");
+      return;
+    }
+    try {
+      const [tx, ids] = await Promise.all([
+        readClient.getTransaction({ hash: txId } as never),
+        readClient.getTriggeredTransactionIds({ hash: txId } as never),
+      ]);
+      setTransaction(tx as unknown as Record<string, unknown>);
+      setTriggeredIds(ids.map(String));
+      update("transactionId", txId);
+      setMessage("Transaction receipt loaded. Triggered IDs are the SDK’s internal-message child links; they do not prove EOA payout settlement.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Transaction receipt could not be loaded.");
+    }
+  }
+
+  async function importKeeperReport(file?: File) {
+    setKeeperReport(null);
+    setReportError("");
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text()) as KeeperReport;
+      if (parsed.chain_id !== "0xf22f" || !Array.isArray(parsed.watches) || !Array.isArray(parsed.alerts)) {
+        throw new Error("The file is not a StudioNet MandateOS keeper report.");
+      }
+      setKeeperReport(parsed);
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : "Keeper report could not be parsed.");
+    }
+  }
+
+  const treasuryLabels = [
+    "Live treasury balance (wei)", "Spendable after allocation reservations (wei)",
+    "Reserved allocations (wei)", "Pending transfer audit total (wei)",
+    "Principal received from vaults (wei)", "Realized returns received from vaults (wei)",
+  ];
+  const mandateLabels = [
+    "Mandate version", "Maximum project exposure (basis points)", "Minimum liquid reserve (basis points)",
+    "Maximum single allocation (wei)", "Allocation challenge window (seconds)", "Evidence freshness limit (seconds)",
+  ];
+  const evidenceLabels = [
+    "Validator assessment", "Source URL", "Source host", "DAO eligibility criteria", "Content SHA-256",
+    "Publication date claim", "Assessment reason", "Material facts", "Assessed at (UTC)",
+    "Fresh until (UTC)", "Mandate version", "Receipt version",
+  ];
+  const agreementLabels = [
+    "Agreement ID", "Allocation ID", "Financing model", "Mandate version", "Principal cap (wei)",
+    "Due time (UTC)", "Grace period (seconds)", "Installment count", "Installment interval (seconds)",
+    "Challenge window (seconds)", "Evidence freshness (seconds)", "Revenue share (basis points)",
+    "Outstanding principal (wei)", "Principal recovered (wei)", "Realized return (wei)",
+    "Repayment GEN received (wei)", "Agreement state", "Operator address", "Beneficiary address", "Beneficiary mode",
+  ];
+  const proposalLabels = ["Proposal type", "Proposal state", "Votes for (weight)", "Votes against (weight)", "Snapshot total weight"];
+  const payoutLabels = ["Contract payout state", "Beneficiary mode", "Fixed destination", "Payment amount (wei)", "Queued at (UTC)"];
+  const vault = effectiveVault;
+  const eoaStatus = dashboard.payout?.ok && Array.isArray(dashboard.payout.value)
+    ? mapEoaSettlementState(String(dashboard.payout.value[0] ?? ""))
+    : "UNVERIFIED";
+  const transactionState = mapTransactionState(transaction as any);
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <a className="brand" href="#top" aria-label="MandateOS home">
+          <span className="brand-mark">M</span>
+          <span>Mandate<span className="brand-light">OS</span></span>
+        </a>
+        <div className="network-badge"><span className="network-dot" /> StudioNet <b>61999</b></div>
+        <div className="top-actions">
+          <span className="readonly-label">Read-only data</span>
+          <button className="button button-outline" onClick={connectWallet}>
+            {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}
+          </button>
+        </div>
+      </header>
+
+      <main id="top" className="main-content">
+        <section className="hero">
+          <div className="hero-copy">
+            <div className="eyebrow">Treasury operations · StudioNet only</div>
+            <h1>Capital with <em>clear rules.</em></h1>
+            <p>Governance, vault financing and transaction evidence in one view. Every balance and status below is read from contract state or identified as unavailable.</p>
+            <div className="hero-actions">
+              <button className="button button-primary" onClick={refresh} disabled={refreshing}>
+                {refreshing ? "Reading StudioNet…" : "Refresh onchain state"}
+              </button>
+              <span className="data-source-note">Latest finalized state</span>
+            </div>
+            {message && <div className="inline-message" role="status">{message}</div>}
+          </div>
+          <div className="hero-side-card">
+            <div className="card-label">Network verification</div>
+            <div className="verified-mark"><span>✓</span> Chain ID 61999</div>
+            <div className="endpoint">https://studio.genlayer.com/api</div>
+            <div className="hero-divider" />
+            <div className="card-label">Settlement policy</div>
+            <p>Queued messages and sender balance changes are not settlement proof. Unlinked EOA transfers stay unverified.</p>
+          </div>
+        </section>
+
+        <details className="config-card" open={!handles.mandateAddress}>
+          <summary><span>Connection handles</span><small>Query references only · never a financial source of truth</small></summary>
+          <div className="fields-grid">
+            <Field label="MandateOS Core address" value={handles.mandateAddress} onChange={(v) => update("mandateAddress", v)} placeholder="0x…" />
+            <Field label="ProjectVault address (optional if project ID resolves)" value={handles.vaultAddress} onChange={(v) => update("vaultAddress", v)} placeholder="0x…" />
+            <Field label="Project ID" value={handles.projectId} onChange={(v) => update("projectId", v)} placeholder="Contract project identifier" />
+            <Field label="Member address" value={handles.memberAddress} onChange={(v) => update("memberAddress", v)} placeholder={wallet || "0x…"} />
+            <Field label="Governance proposal ID" value={handles.proposalId} onChange={(v) => update("proposalId", v)} placeholder="Proposal identifier" />
+            <Field label="Allocation ID" value={handles.allocationId} onChange={(v) => update("allocationId", v)} placeholder="Allocation identifier" />
+            <Field label="Refund ID" value={handles.refundId} onChange={(v) => update("refundId", v)} placeholder="Refund identifier" />
+            <Field label="Milestone ID" value={handles.milestoneId} onChange={(v) => update("milestoneId", v)} placeholder="Milestone identifier" />
+            <Field label="Payout ID" value={handles.paymentId} onChange={(v) => update("paymentId", v)} placeholder="Payment identifier" />
+            <Field label="Repayment ID" value={handles.repaymentId} onChange={(v) => update("repaymentId", v)} placeholder="Repayment identifier" />
+            <Field label="Distribution ID" value={handles.distributionId} onChange={(v) => update("distributionId", v)} placeholder="Distribution identifier" />
+            <Field label="Revenue period ID" value={handles.revenuePeriodId} onChange={(v) => update("revenuePeriodId", v)} placeholder="Period identifier" />
+          </div>
+          <p className="config-footnote">These identifiers are stored in this browser for convenience. The contract and StudioNet RPC remain the source of financial and governance data. Current contracts do not expose enumerable project/proposal indexes, so enter a known ID to inspect it.</p>
+        </details>
+
+        <section className="dashboard-section" id="treasury">
+          <SectionHeading eyebrow="01 · Treasury" title="Available capital" text="Contract balances and encumbrances are read directly from MandateOS Core." />
+          <div className="two-column">
+            <DataPanel title="Treasury balance & reserves" detail="Native GEN · exact wei values from contract storage" result={dashboard.treasury} labels={treasuryLabels} />
+            <DataPanel title="Versioned investment mandate" detail="Exposure, reserve, allocation and evidence limits" result={dashboard.mandate} labels={mandateLabels} />
+          </div>
+        </section>
+
+        <section className="dashboard-section" id="governance">
+          <SectionHeading eyebrow="02 · Governance" title="Member decisions" text="Read snapshotted proposal state and vote through your own StudioNet wallet." />
+          <div className="two-column">
+            <DataPanel title="Member voting weight" detail={effectiveMemberAddress || "Enter a member or connect a wallet"} result={dashboard.member} labels={["Onchain voting weight"]} />
+            <DataPanel title="Proposal & voting snapshot" detail={handles.proposalId || "Enter a proposal ID"} result={dashboard.proposal} labels={proposalLabels} />
+          </div>
+          <div className="two-column section-space">
+            <DataPanel title="Proposal deadlines" result={dashboard.proposalTiming} labels={["Voting ends (UTC)", "Execution available after (UTC)", "Execution expires at (UTC)"]} />
+            <article className="panel vote-panel">
+              <div className="panel-heading"><div><h3>Cast your vote</h3><p>MandateOS verifies membership, snapshot weight and deadline.</p></div><span className="query-tag tag-muted">Wallet required</span></div>
+              <p className="empty-state">Connect a wallet on chain 61999 and load a proposal. Your wallet signs the vote directly; the dashboard never stores keys.</p>
+              <div className="button-row">
+                <button className="button button-primary" disabled={!wallet || !handles.proposalId.trim()} onClick={() => vote(true)}>Vote for</button>
+                <button className="button button-outline" disabled={!wallet || !handles.proposalId.trim()} onClick={() => vote(false)}>Vote against</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section className="dashboard-section" id="projects">
+          <SectionHeading eyebrow="03 · Projects & evidence" title="Eligibility with provenance" text="Review the current validator assessment, original source and freshness window." />
+          <div className="two-column">
+            <DataPanel title="Registered ProjectVault" detail={handles.projectId || "Project ID required"} result={dashboard.registeredVault} labels={["Registered vault address"]} />
+            <DataPanel title="Current evidence receipt" detail="Historical receipts are not enumerated by the current contract view." result={dashboard.evidence} labels={evidenceLabels} />
+          </div>
+          {dashboard.evidence?.ok && Array.isArray(dashboard.evidence.value) && (
+            <div className="notice notice-info">The publication date is a source claim. The assessment time is the contract transaction timestamp; neither is a settlement timestamp.</div>
+          )}
+        </section>
+
+        <section className="dashboard-section" id="vault">
+          <SectionHeading eyebrow="04 · ProjectVault" title="Financing & milestones" text="Agreement obligations, milestone evidence and repayment state from the registered vault." />
+          {vault && <div className="address-strip"><span>Vault being queried</span><code>{vault}</code></div>}
+          <div className="two-column">
+            <DataPanel title="Agreement terms & principal" detail="Received, recovered and realized values are kept distinct" result={dashboard.agreement} labels={agreementLabels} />
+            <DataPanel title="Vault balance and distributable funds" result={dashboard.vaultBalance} labels={["Vault native balance (wei)"]} />
+          </div>
+          <div className="two-column section-space">
+            <DataPanel title="Milestone assessment & challenge" result={dashboard.milestone} labels={["Milestone state", "Amount (wei)", "Agreed criteria"]} />
+            <DataPanel title="Milestone evidence receipt" result={dashboard.milestoneEvidence} labels={["Source URL", "Source host", "Content SHA-256", "Assessment reason", "Assessed at (UTC)", "Fresh until (UTC)", "Mandate version", "Evidence version"]} />
+          </div>
+          <div className="two-column section-space">
+            <DataPanel title="Milestone challenge deadline" result={dashboard.milestoneDispute} labels={["Dispute window ends (UTC)"]} />
+            <DataPanel title="Default dispute" result={dashboard.default} labels={["Default state"]} />
+          </div>
+        </section>
+
+        <section className="dashboard-section" id="payments">
+          <SectionHeading eyebrow="05 · Payments & recovery" title="Money movement evidence" text="A contract status, receipt, child link and actual balances are separate evidence fields." />
+          <div className="two-column">
+            <DataPanel title="Milestone payout record" detail="Destination and amount are immutable per payment ID" result={dashboard.payout} labels={payoutLabels} />
+            <article className="panel settlement-panel">
+              <div className="panel-heading"><div><h3>Independent settlement</h3><p>EOA beneficiary verification</p></div><span className="query-tag tag-risk">{eoaStatus}</span></div>
+              <p>The supported SDK child-ID API reads internal IC message events. It does not expose a parent-linked child receipt for the EOA external value transfer.</p>
+              <p className="risk-note">A finalized payment intent or beneficiary balance increase alone is not proof. No keeper or administrator can mark an EOA payment successful.</p>
+            </article>
+          </div>
+          <div className="three-column section-space">
+            <DataPanel title="Refund state" result={dashboard.treasuryRefund} labels={["MandateOS refund state"]} />
+            <DataPanel title="Vault refund capacity" result={dashboard.refundAvailable} labels={["Refundable GEN (wei)"]} />
+            <DataPanel title="Reserved for refunds" result={dashboard.refundReserved} labels={["Refund reservation (wei)"]} />
+          </div>
+          <div className="three-column section-space">
+            <DataPanel title="Repayment receipt" result={dashboard.repayment} labels={["Repayment state"]} />
+            <DataPanel title="Governed return distribution" result={dashboard.distribution} labels={["Principal amount (wei)", "Realized return (wei)", "Total (wei)"]} />
+            <DataPanel title="Distribution status & availability" result={dashboard.distributionStatus} labels={["Distribution state"]} />
+          </div>
+          <div className="three-column section-space">
+            <DataPanel title="Actually received, available to distribute" result={dashboard.distributionAvailable} labels={["Principal received (wei)", "Realized return received (wei)"]} />
+            <DataPanel title="Revenue report vs deposit" detail="Reported income is not native GEN received" result={dashboard.revenue} labels={["Reported revenue (wei)", "GEN received (wei)"]} />
+            <DataPanel title="Agreement closure guard" result={dashboard.canClose} labels={["Can close under vault obligations"]} />
+          </div>
+        </section>
+
+        <section className="dashboard-section" id="activity">
+          <SectionHeading eyebrow="06 · Reconciliation & audit" title="Transaction history and keeper alerts" text="Inspect a known GenLayer transaction or import a durable local keeper report." />
+          <article className="panel transaction-panel">
+            <div className="panel-heading"><div><h3>GenLayer transaction receipt</h3><p>Submission, finalization and execution are shown separately.</p></div>{transaction && <span className="query-tag tag-live">{transactionState.replaceAll("_", " ")}</span>}</div>
+            <div className="transaction-search">
+              <Field label="GenLayer transaction ID" value={handles.transactionId} onChange={(v) => update("transactionId", v)} placeholder="0x + 64 hex characters" />
+              <button className="button button-outline" onClick={() => inspectTransaction()} disabled={!handles.transactionId.trim()}>Inspect receipt</button>
+            </div>
+            {transaction ? (
+              <div className="two-column compact-grid">
+                <DataPanel title="Stored GenLayer receipt" result={{ ok: true, value: {
+                  id: transaction.txId ?? transaction.hash,
+                  status: transaction.statusName ?? transaction.status_name ?? transaction.status,
+                  execution: transaction.txExecutionResultName ?? transaction.tx_execution_result_name ?? transaction.txExecutionResult,
+                  recipient: transaction.recipient,
+                  timestamps: transaction.timestamps,
+                } }} />
+                <DataPanel title="Triggered internal-message IDs" detail="SDK returns IDs created by internal message processing events." result={{ ok: true, value: triggeredIds.length ? triggeredIds : "No internal child IDs returned" }} />
+              </div>
+            ) : <p className="empty-state">No transaction receipt loaded. The dashboard does not invent transaction history.</p>}
+          </article>
+          <article className="panel keeper-panel section-space">
+            <div className="panel-heading"><div><h3>Keeper alert archive</h3><p>Import the JSON report produced by <code>python -m keeper.cli</code>.</p></div><span className="query-tag tag-muted">Local report · unsigned</span></div>
+            <label className="file-picker">Select keeper report JSON<input type="file" accept="application/json,.json" onChange={(event) => void importKeeperReport(event.target.files?.[0])} /></label>
+            {reportError && <p className="unavailable">{reportError}</p>}
+            {keeperReport ? (
+              <>
+                <div className="notice notice-warning">This local JSON report is useful for operations but is not cryptographically signed or independently authenticated by the dashboard.</div>
+                <div className="report-summary">{keeperReport.watches.length} tracked transactions · {keeperReport.alerts.length} alerts · generated {keeperReport.generated_at ?? "time unavailable"}</div>
+                <div className="report-list">
+                  {keeperReport.watches.map((item, index) => (
+                    <div className="report-row" key={`${String(item.tx_id)}-${index}`}>
+                      <code>{String(item.tx_id ?? "transaction ID unavailable")}</code>
+                      <span className={`state-pill state-${String(item.state ?? "unknown").toLowerCase()}`}>{String(item.state ?? "UNKNOWN")}</span>
+                      <span>{String(item.transfer_id ?? "transfer ID unavailable")}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="report-list">
+                  {keeperReport.alerts.map((item, index) => (
+                    <div className="report-row alert-row" key={`${String(item.alert_key)}-${index}`}>
+                      <b>{String(item.severity ?? "ALERT")}</b>
+                      <span>{String(item.state ?? "UNKNOWN")}</span>
+                      <span>{String(item.message ?? "No alert detail")}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : <p className="empty-state">No keeper report imported. No sample alerts or balances are shown.</p>}
+          </article>
+        </section>
+
+        <footer className="footer">
+          <div><b>MandateOS</b><span>Governed capital. Verifiable outcomes.</span></div>
+          <span>StudioNet only · chain ID 61999 · no backend key custody</span>
+        </footer>
+      </main>
+    </div>
+  );
+}
+
+export const displayHelpers = { rowsFor, formatWei, formatUtcTimestamp };

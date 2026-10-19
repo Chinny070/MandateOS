@@ -30,6 +30,14 @@
 - Additional Direct Mode cases bind EOA/IC recipient mode and a fixed destination, deny any EOA callback or local reconciliation from promoting a payment, retain reservations after timeout, deny duplicate payout attempts, govern actual repayment/return distributions, and route closure through a timelocked DAO proposal.
 - `tests/test_studionet_rpc.py` uses deterministic JSON-RPC fixtures to check chain ID 61999, receipt identity, source/destination/value mismatches, failed/pending transfers, balance snapshots and fail-closed missing parent-child linkage. These fixtures are adapter tests only; this turn did not query StudioNet.
 
+## Keeper persistence and dashboard state mapping
+
+- `tests/test_keeper_archive_monitor.py` and `tests/test_reconciler.py` use deterministic reader fixtures to cover SQLite restart recovery, duplicate receipt/edge/audit handling, idempotent watch registration, internal-child verification requiring the exact child plus contract read-back and two-sided balances, EOA intent remaining UNKNOWN even when local observations appear to match, failed child execution, wrong recipient, inconsistent and incomplete balances, RPC error followed by successful re-poll, and mismatched emitted payment intent.
+- `keeper.sdk_reader.GenLayerPYReader` pins reads to `studionet` and verifies chain ID `0xf22f` for each request. `keeper.cli` accepts only pre-existing transaction IDs and exact immutable payment intents; it never signs, submits, retries, or calls treasury methods. SQLite receipt snapshots are content-hash deduplicated and durable across process restarts.
+- `web/src/models.test.ts` checks finalized execution success/failure separately from accepted/unknown status, prevents EOA contract states from being shown as verified settlement, and formats wei/timestamps without floating-point conversion.
+- Actual outcomes for the current branch: `python -m pytest -q` — 109 passed; frontend Vitest — 4 passed; TypeScript typecheck and Vite production build passed; Python compilation and both GenVM lint runs passed. No test fixture in these suites is live StudioNet evidence.
+- Official SDK behavior was inspected: GenLayerJS `getTriggeredTransactionIds` and GenLayerPY `get_triggered_transaction_ids` consume `InternalMessageProcessed` events. No external EOA child transaction ID is exposed by this API. EOA payments therefore stay UNKNOWN and are not automatically retried.
+
 ## Gate 3: Evidence + clock + consensus
 
 - Contract implementation now performs an independently re-fetched comparative eligibility assessment and persists a SHA-256 receipt, provenance URL/host, claimed publication date, assessment timestamp, expiry, mandate version, result and incrementing receipt version. Direct Mode cannot execute Equivalence Principle blocks; no validator verdict is claimed.

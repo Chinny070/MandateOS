@@ -81,11 +81,28 @@ def test_recipient_or_amount_mismatch_is_value_at_risk(changes):
     assert not result.retry_permitted
 
 
-def test_eoa_requires_receipt_balance_and_parent_link():
+def test_eoa_stays_unverified_even_with_matching_local_observations():
     values = observation(recipient_kind="EOA", destination_recorded_amount_wei=None)
-    assert reconcile_transfer(values).state == TransferState.VERIFIED
+    result = reconcile_transfer(values)
+    assert result.state == TransferState.UNKNOWN
+    assert "causally linked external EOA" in result.reason
     without_balance = observation(
         recipient_kind="EOA", destination_recorded_amount_wei=None,
         destination_balance_after_wei=None,
     )
-    assert reconcile_transfer(without_balance).state == TransferState.CHILD_SUCCESS
+    assert reconcile_transfer(without_balance).state == TransferState.UNKNOWN
+
+
+def test_source_balance_mismatch_is_value_at_risk():
+    result = reconcile_transfer(observation(
+        source_balance_before_wei=100,
+        source_balance_after_wei=74,
+    ))
+    assert result.state == TransferState.VALUE_AT_RISK
+    assert "source balance delta" in result.reason
+
+
+def test_partial_source_balance_snapshot_is_unknown():
+    result = reconcile_transfer(observation(source_balance_before_wei=100))
+    assert result.state == TransferState.UNKNOWN
+    assert "source balance snapshot is incomplete" in result.reason

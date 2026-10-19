@@ -1466,6 +1466,41 @@ The following value is a JSON-encoded string of untrusted page text: {page_json}
         return self.balance
 
     @gl.public.view
+    def get_treasury_summary(self) -> tuple[u256, u256, u256, u256, u256, u256]:
+        spendable = u256(0)
+        if self.reserved_allocation_wei < self.balance:
+            spendable = self.balance - self.reserved_allocation_wei
+        return (
+            self.balance,
+            spendable,
+            self.reserved_allocation_wei,
+            self.pending_transfer_wei,
+            self.total_project_principal_received_wei,
+            self.total_project_return_received_wei,
+        )
+
+    @gl.public.view
+    def get_mandate_summary(self) -> tuple[u256, u256, u256, u256, u256, u256]:
+        return (
+            self.mandate_version,
+            self.mandate_max_project_exposure_bps,
+            self.mandate_min_liquid_reserve_bps,
+            self.mandate_max_allocation_wei,
+            self.mandate_challenge_window_seconds,
+            self.mandate_evidence_max_age_seconds,
+        )
+
+    @gl.public.view
+    def get_proposal_summary(self, proposal_id: str) -> tuple[str, str, u256, u256, u256]:
+        return (
+            self.proposal_kind.get(proposal_id, "UNKNOWN"),
+            self.proposal_status.get(proposal_id, "UNKNOWN"),
+            self.proposal_votes_for.get(proposal_id, u256(0)),
+            self.proposal_votes_against.get(proposal_id, u256(0)),
+            self.proposal_snapshot_total.get(proposal_id, u256(0)),
+        )
+
+    @gl.public.view
     def get_funding_status(self, allocation_id: str) -> str:
         return self.funding_status.get(allocation_id, "UNKNOWN")
 
