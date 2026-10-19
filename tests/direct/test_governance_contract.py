@@ -681,6 +681,11 @@ def test_allocation_requires_two_member_final_vote_challenge_expiry_and_is_idemp
     )
     _approve_and_execute(direct_vm, treasury, "register-project-a", [founder, bob])
     assert treasury.get_vault_address("project-a") == vault_address
+    assert treasury.get_registered_project_count() == 1
+    assert treasury.get_registered_project_id_at(0) == "project-a"
+    assert treasury.get_registered_project_id_at(1) == ""
+    assert treasury.get_proposal_count() >= 2
+    assert treasury.get_proposal_id_at(1) == "register-project-a"
     with direct_vm.prank(founder), direct_vm.expect_revert("invalid or registered project"):
         treasury.propose_vault_registration(
             "register-project-a-again", "project-a", vault_address, 1000,

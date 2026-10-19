@@ -1,71 +1,67 @@
-# MandateOS — Codex starter
+# MandateOS
 
-**Status: Gate 0 starter / LAB-ONLY. NOT production-ready, NOT live-deployed.**
+MandateOS is a StudioNet-native treasury DAO built from two GenLayer Intelligent Contracts: **MandateOS Core** and a reusable **ProjectVault**. The Core governs treasury allocation and agreement actions. Each ProjectVault holds project funds, tracks milestone obligations, receives actual repayments, and returns eligible GEN through authenticated parent-contract messages.
 
-**Authorized GitHub repository:** https://github.com/Chinny070/MandateOS (`main`). This ZIP is a local starter, not a claim that files were pushed to GitHub. Codex must verify the remote before pushing.
+The repository also contains a noncustodial, read-only StudioNet keeper and a React, TypeScript, Vite dashboard. The keeper stores transaction observations locally; it has no signing key, arbitrary spending power, automatic retry, or governance bypass. The dashboard reads latest-final contract state through GenLayerJS and requests wallet signatures only when the user starts a supported governance action.
 
-MandateOS is a GenLayer StudioNet-native, evidence-driven treasury DAO with separately deployable ProjectVault Intelligent Contracts. It is designed to govern real *StudioNet GEN* flows under versioned investment mandates and challengeable, milestone-controlled project agreements.
+## Release status
 
-## What is in this starter
+The project is **not production ready**. Local tests, Direct Mode execution, static analysis, RPC reads, and a frontend build do not prove StudioNet validator consensus or live GEN settlement. No MandateOS or ProjectVault deployment, deposit, refund, payout, repayment, or distribution is recorded in this repository's live proof log.
 
-- `contracts/mandate_os.py`: **laboratory** GEN deposits, administrator-only project-vault registration, outbound **on-finalized IC-to-IC** GEN funding, read-based funding reconciliation, and refund receipt.
-- `contracts/project_vault.py`: **laboratory** parent-authenticated payable funding and return of eligible unspent GEN to MandateOS.
-- `reference/risk_model.py`: independent reference model for concentration, reserves, pending commitments, and evidence failure states. **Not wired to the onchain contract.**
-- `tests/test_risk_model.py`: deterministic reference-model tests.
-- `docs/`: product scope, state machines, financial invariants, evidence/web renderer, integration matrix, and test/runbook requirements.
-- `CODEX_MASTER_PROMPT.md`: handoff instruction to implement all remaining features and prove them on StudioNet.
+EOA milestone payouts remain unsuitable for production settlement. The supported GenLayer SDK exposes internal IC message child IDs but not a causally linked receipt for the external EOA value transfer. Such a payment remains pending or value-at-risk; it cannot be marked successful or retried automatically.
 
-## Known missing components (intentionally NOT represented as implemented)
+Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [docs/DEPLOYMENT_READINESS.md](docs/DEPLOYMENT_READINESS.md) for verified results, blockers, exact deployment order, and the small-value runbook.
 
-Distributed governance, policy enforcement in the onchain funding path, evidence assessment, native web rendering, validator Equivalence Principle, timestamps, per-milestone disbursements, project debt accounting, revenue sharing, challenges, keeper, frontend, secure upgrade controls, comprehensive adversarial testing, independent child-receipt verification, and public deployment proofs.
+## Repository layout
 
-> The administrator-only lab functions MUST NOT ship to users or hold meaningful assets. They exist only to demonstrate and diagnose GEN custody and child-message semantics. No trading or ERC-20 dependency is in scope.
+- `contracts/mandate_os.py` — membership, proposal snapshots and voting, mandates, evidence receipts, allocations, refunds, agreements, milestones, challenges and governed resolutions.
+- `contracts/project_vault.py` — project funding custody, agreement and milestone records, reserved payouts/refunds/distributions, payable repayments and revenue, default and closure guards.
+- `keeper/` — StudioNet-pinned RPC reader, durable SQLite observation archive, reconciliation classifications, alerts and reports. It never signs or sends GEN.
+- `web/` — real-data dashboard. Core and vault indexes allow recent proposal, project and vault record discovery. User-signed voting, milestone proposal and milestone challenge calls use existing contract methods.
+- `tests/` — Direct Mode contract tests, keeper/RPC adapter tests, and frontend state-mapping tests. Test fixtures are local evidence only.
+- `docs/` — architecture, financial model, test matrix and readiness documentation.
 
-## Run local reference-model tests
+## Local verification
 
-From the repository root:
+Use Python dependencies from `requirements.txt`, the pinned GenLayer toolchain, and Node.js dependencies in `web/package-lock.json`.
 
-```bash
-python -m compileall -q contracts reference
-python -m pytest tests/test_risk_model.py -q
+```powershell
+python -m compileall -q contracts reference keeper tests
+python -m pytest -q
+genvm-lint contracts/mandate_os.py
+genvm-lint contracts/project_vault.py
+Set-Location web
+npm ci
+npm run typecheck
+npm test
+npm run build
 ```
 
-GenLayer runner dependencies are not available in the file-generation environment; **no GenLayer runtime, validator consensus or StudioNet results are claimed here**. Codex must install compatible `genlayer-test` / `genvm-linter` tooling and verify contracts against a real GenLayer runner.
+Passing local checks are not live transaction proof. Keep actual StudioNet deployment addresses, finalized transaction IDs, child results, and before/after balances in `LIVE_PROOFS.md` only after independently verifying them.
 
-## Initial deployment gate
+## Dashboard
 
-1. Probe `https://studio.genlayer.com/api` for network identification; require `61999` and record raw responses.
-2. Pin the SDK versions and ensure `genvm-lint` and Direct Mode tests pass.
-3. Deploy `MandateOS` first; deploy `ProjectVault(mandate_os_address, project_id)` second; register the vault on the main contract.
-4. Fund MandateOS with faucet GEN using the payable `deposit` method.
-5. Call the lab-only `fund_project_vault` with a unique allocation ID; **wait for finalization of the parent and independent child**.
-6. Verify the vault's `get_allocation_amount`, both balances, and transaction statuses before calling `reconcile_funding`.
-7. Initiate a uniquely identified refund and verify its entire reverse message chain.
-8. Document failures and non-recoverable states. Never blind-resubmit a transaction that may already have escrowed value in a child message.
+```powershell
+Set-Location web
+npm ci
+npm run dev
+```
 
-This is *not* the final production flow. It must be redesigned around the complete DAO and investor-protection scope specified in the handoff.
+Optional `.env.local` query handles:
 
-## Network
+```text
+VITE_MANDATE_OS_ADDRESS=0x...
+VITE_PROJECT_VAULT_ADDRESS=0x...
+VITE_PROJECT_ID=...
+```
 
-- Target: **GenLayer StudioNet only**
-- Chain ID: `61999`
-- RPC: `https://studio.genlayer.com/api`
-- Explorer: `https://explorer-studio.genlayer.com`
-- Currency: `GEN`; amounts in contract storage are **u256 wei**, `1 GEN = 10**18 wei`
+No deployment address or sample financial data is bundled. Connect a wallet only to sign an action you choose. The dashboard pins writes to StudioNet chain ID `61999` and displays transaction submission separately from finalization. It does not submit deposits or GEN transfers.
 
-## Security and operating notes
+## Network and amount units
 
-- Do not put private keys, mnemonics, API tokens, signing secrets or sensitive identifying evidence in source or logs.
-- Multiple GenLayer versions exist; Codex must reconcile current docs and installed runtime behavior before editing interfaces and deployment scripts.
-- No broad EOA withdrawal method is included in the lab contracts.
-- `SCHEDULED` is not settled, and `CONFIRMED` in the current prototype indicates read-based destination state only. Keeper receipt matching and full transfer accounting are needed before production.
-- The demo's GEN is test-network currency; no real-world return is implied.
+- Target network: GenLayer StudioNet only.
+- Chain ID: `61999` (`0xf22f`).
+- RPC: `https://studio.genlayer.com/api`.
+- Native currency: GEN; contract values use wei (`1 GEN = 10^18 wei`).
 
-## Official primary references
-
-- [Value Transfers](https://docs.genlayer.com/developers/intelligent-contracts/features/value-transfers)
-- [IC-to-IC Messages](https://docs.genlayer.com/developers/intelligent-contracts/features/messages)
-- [Interacting with Intelligent Contracts](https://docs.genlayer.com/developers/intelligent-contracts/features/interacting-with-intelligent-contracts)
-- [Web Access](https://docs.genlayer.com/developers/intelligent-contracts/features/web-access)
-- [Transaction Context](https://docs.genlayer.com/developers/intelligent-contracts/features/transaction-context)
-- [Testing](https://docs.genlayer.com/developers/intelligent-contracts/testing)
+Never store private keys, mnemonics, API credentials, or signing secrets in this repository. No Solidity, ERC-20, DEX, or EVM-side deployment is part of the architecture.

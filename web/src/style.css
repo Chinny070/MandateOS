@@ -119,7 +119,18 @@ h1 em { color: #44735f; }
 .report-summary { margin: 14px 0 9px; color: #728078; font-size: 11px; }
 .report-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .report-row { display: grid; grid-template-columns: minmax(160px, 1.4fr) auto minmax(130px, 1fr); align-items: center; gap: 12px; padding: 9px 10px; background: #f3f5f0; border-radius: 6px; color: #64726b; font-size: 10px; }
+.report-row-button { width: 100%; border: 0; text-align: left; font: inherit; cursor: pointer; }
+.report-row-button:hover, .discovery-row:hover { background: #e9eee6; }
 .report-row code { color: #314c3b; }
+.discovery-list { display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow: auto; }
+.discovery-row { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(100px, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 10px; color: #52635a; text-align: left; background: #f3f5f0; border: 0; border-radius: 6px; font-size: 10px; }
+.discovery-row code, .discovery-row span { min-width: 0; overflow-wrap: anywhere; }
+.discovery-row code { color: #314c3b; font-family: var(--mono); }
+.project-row { grid-template-columns: minmax(90px, .65fr) minmax(0, 1.35fr); }
+.workflow-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.workflow-form textarea { min-height: 72px; padding: 9px 10px; color: #263630; background: #fbfcf8; border: 1px solid #d4ddd2; border-radius: 6px; outline: none; resize: vertical; font: 11px/1.5 var(--mono); }
+.workflow-form textarea:focus { border-color: #689176; box-shadow: 0 0 0 3px #70a47c20; }
+.workflow-wide { grid-column: 1 / -1; }
 .alert-row { grid-template-columns: 75px 110px minmax(0, 1fr); background: #fbf1e2; }
 .alert-row b { color: #8b5f25; }
 .state-pill { justify-self: start; padding: 4px 7px; border-radius: 100px; background: #e7eee5; color: #476b4f; font-size: 9px; font-weight: 700; }
@@ -160,5 +171,8 @@ h1 em { color: #44735f; }
   .data-row { grid-template-columns: minmax(105px, .75fr) minmax(0, 1.25fr); gap: 9px; }
   .transaction-search { align-items: stretch; flex-direction: column; }
   .report-row, .alert-row { grid-template-columns: 1fr; gap: 6px; }
+  .discovery-row, .project-row { grid-template-columns: 1fr; gap: 6px; }
+  .workflow-form { grid-template-columns: 1fr; }
+  .workflow-wide { grid-column: auto; }
   .footer { align-items: flex-start; flex-direction: column; gap: 8px; }
 }

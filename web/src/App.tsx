@@ -22,6 +22,9 @@ type KeeperReport = {
   spending_authority?: boolean;
   automatic_retry?: boolean;
 };
+type IndexedProposal = { id: string; kind: string; status: string; votesFor: string; votesAgainst: string };
+type IndexedProject = { id: string; vault: string };
+type IndexedActivity = { kind: string; id: string; status: string };
 
 type Handles = {
   mandateAddress: string;
@@ -178,6 +181,10 @@ export function App() {
   const [triggeredIds, setTriggeredIds] = useState<string[]>([]);
   const [keeperReport, setKeeperReport] = useState<KeeperReport | null>(null);
   const [reportError, setReportError] = useState("");
+  const [proposalIndex, setProposalIndex] = useState<IndexedProposal[]>([]);
+  const [projectIndex, setProjectIndex] = useState<IndexedProject[]>([]);
+  const [vaultActivity, setVaultActivity] = useState<IndexedActivity[]>([]);
+  const [indexError, setIndexError] = useState("");
 
   const readClient = useMemo(() => createClient({ chain: studionet }), []);
   const effectiveMemberAddress = handles.memberAddress || wallet;
@@ -211,6 +218,24 @@ export function App() {
     } catch (error) {
       data[key] = { ok: false, error: error instanceof Error ? error.message : "RPC read failed" };
     }
+  }
+
+  async function readLatest(contract: string, functionName: string, args: unknown[] = []): Promise<unknown> {
+    return readClient.readContract({
+      address: contract as `0x${string}`,
+      functionName,
+      args,
+      transactionHashVariant: TransactionHashVariant.LATEST_FINAL,
+    } as never);
+  }
+
+  async function readIndex(contract: string, countMethod: string, idMethod: string, limit = 30): Promise<string[]> {
+    const count = BigInt(String(await readLatest(contract, countMethod)));
+    const first = count > BigInt(limit) ? count - BigInt(limit) : 0n;
+    const indices: bigint[] = [];
+    for (let index = first; index < count; index += 1n) indices.push(index);
+    const ids = await Promise.all(indices.map((index) => readLatest(contract, idMethod, [index]).then(String)));
+    return ids.filter(Boolean).reverse();
   }
 
   async function refresh() {
@@ -250,6 +275,29 @@ export function App() {
       }
       await Promise.all(coreReads);
 
+      let indexErrorMessage = "";
+      if (typeof next.registeredVault?.ok !== "undefined" || ADDRESS.test(mandate)) {
+        try {
+          const [projectIds, proposalIds] = await Promise.all([
+            readIndex(mandate, "get_registered_project_count", "get_registered_project_id_at"),
+            readIndex(mandate, "get_proposal_count", "get_proposal_id_at"),
+          ]);
+          const [projects, proposals] = await Promise.all([
+            Promise.all(projectIds.map(async (id) => ({ id, vault: String(await readLatest(mandate, "get_vault_address", [id])) }))),
+            Promise.all(proposalIds.map(async (id) => {
+              const summary = asArray(await readLatest(mandate, "get_proposal_summary", [id])) ?? [];
+              return { id, kind: String(summary[0] ?? "UNKNOWN"), status: String(summary[1] ?? "UNKNOWN"), votesFor: String(summary[2] ?? "0"), votesAgainst: String(summary[3] ?? "0") };
+            })),
+          ]);
+          setProjectIndex(projects);
+          setProposalIndex(proposals);
+        } catch (error) {
+          indexErrorMessage = error instanceof Error ? error.message : "Contract indexes could not be read.";
+          setProjectIndex([]);
+          setProposalIndex([]);
+        }
+      }
+
       const vault = handles.vaultAddress.trim() || (ADDRESS.test(String(next.registeredVault?.ok ? next.registeredVault.value : ""))
         ? String(next.registeredVault?.ok ? next.registeredVault.value : "")
         : "");
@@ -286,7 +334,34 @@ export function App() {
           vaultReads.push(query(next, "revenue", vault, "get_revenue_period", [handles.revenuePeriodId.trim()]));
         }
         await Promise.all(vaultReads);
+        try {
+          const indexSpecs = [
+            ["milestone", "get_milestone_count", "get_milestone_id_at"],
+            ["payout", "get_payout_count", "get_payout_id_at"],
+            ["refund", "get_refund_count", "get_refund_id_at"],
+            ["repayment", "get_repayment_count", "get_repayment_id_at"],
+            ["distribution", "get_distribution_count", "get_distribution_id_at"],
+            ["revenue", "get_revenue_period_count", "get_revenue_period_id_at"],
+          ];
+          const entries = await Promise.all(indexSpecs.map(async ([kind, countMethod, idMethod]) => {
+            const ids = await readIndex(vault, countMethod, idMethod, 20);
+            return Promise.all(ids.map(async (id) => {
+              const method = kind === "milestone" ? "get_milestone_summary"
+                : kind === "payout" ? "get_payout_details"
+                  : kind === "revenue" ? "get_revenue_period"
+                    : "get_" + kind + "_status";
+              const raw = asArray(await readLatest(vault, method, [id]));
+              const status = kind === "revenue" ? (raw ? "REPORTED / RECEIVED" : "RECORDED") : String(raw?.[0] ?? "RECORDED");
+              return { kind, id, status };
+            }));
+          }));
+          setVaultActivity(entries.flat());
+        } catch (error) {
+          indexErrorMessage = [indexErrorMessage, error instanceof Error ? error.message : "Vault indexes could not be read."].filter(Boolean).join(" · ");
+          setVaultActivity([]);
+        }
       }
+      setIndexError(indexErrorMessage);
       setDashboard(next);
       setMessage("Read latest finalized contract state from StudioNet. No writes were submitted.");
     } finally {
@@ -340,6 +415,65 @@ export function App() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Vote submission failed.");
     }
+  }
+
+  async function submitMemberCall(functionName: string, args: unknown[], description: string) {
+    try {
+      if (!window.ethereum || !wallet) throw new Error("Connect a StudioNet wallet first.");
+      if (!ADDRESS.test(handles.mandateAddress)) throw new Error("A MandateOS Core address is required.");
+      const chain = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
+      if (chain !== "0xf22f") throw new Error("Wallet network changed; select StudioNet (61999) before submitting.");
+      const writer: any = createClient({ chain: studionet, account: wallet as `0x${string}`, provider: window.ethereum });
+      const call = { account: wallet as `0x${string}`, address: handles.mandateAddress as `0x${string}`, functionName, args };
+      const estimate = await writer.estimateTransactionFeesForWrite(call);
+      const txId = await writer.writeContract({ ...call, fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
+      update("transactionId", String(txId));
+      setMessage(`${description} submitted: ${txId}. Submission is not confirmation; inspect final status below.`);
+      await inspectTransaction(String(txId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `${description} failed.`);
+    }
+  }
+
+  async function proposeMilestone(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const proposalId = String(data.get("proposalId") ?? "").trim();
+    const projectId = String(data.get("projectId") ?? "").trim();
+    const milestoneId = String(data.get("milestoneId") ?? "").trim();
+    const amount = String(data.get("amount") ?? "").trim();
+    const criteria = String(data.get("criteria") ?? "").trim();
+    if (!proposalId || !projectId || !milestoneId || !/^[1-9]\d*$/.test(amount) || !criteria) {
+      setMessage("Enter a unique proposal ID, registered project, milestone ID, positive amount in wei and criteria.");
+      return;
+    }
+    await submitMemberCall("propose_vault_milestone", [proposalId, projectId, milestoneId, BigInt(amount), criteria], "Milestone proposal");
+    update("proposalId", proposalId);
+    update("projectId", projectId);
+    update("milestoneId", milestoneId);
+  }
+
+  async function challengeMilestone(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const projectId = String(data.get("projectId") ?? "").trim();
+    const milestoneId = String(data.get("milestoneId") ?? "").trim();
+    const digest = String(data.get("digest") ?? "").trim();
+    if (!projectId || !milestoneId || !digest) {
+      setMessage("Enter the project ID, milestone ID and your evidence digest.");
+      return;
+    }
+    await submitMemberCall("challenge_vault_milestone", [projectId, milestoneId, digest], "Milestone challenge");
+    update("projectId", projectId);
+    update("milestoneId", milestoneId);
+  }
+
+  function selectIndexedActivity(item: IndexedActivity) {
+    if (item.kind === "milestone") update("milestoneId", item.id);
+    else if (item.kind === "payout") update("paymentId", item.id);
+    else if (item.kind === "refund") update("refundId", item.id);
+    else if (item.kind === "repayment") update("repaymentId", item.id);
+    else if (item.kind === "distribution") update("distributionId", item.id);
+    else if (item.kind === "revenue") update("revenuePeriodId", item.id);
+    setMessage(`Selected ${item.kind} ${item.id}. Refresh onchain state to load its details.`);
   }
 
   async function inspectTransaction(txId = handles.transactionId.trim()) {
@@ -463,7 +597,7 @@ export function App() {
             <Field label="Distribution ID" value={handles.distributionId} onChange={(v) => update("distributionId", v)} placeholder="Distribution identifier" />
             <Field label="Revenue period ID" value={handles.revenuePeriodId} onChange={(v) => update("revenuePeriodId", v)} placeholder="Period identifier" />
           </div>
-          <p className="config-footnote">These identifiers are stored in this browser for convenience. The contract and StudioNet RPC remain the source of financial and governance data. Current contracts do not expose enumerable project/proposal indexes, so enter a known ID to inspect it.</p>
+          <p className="config-footnote">These identifiers are stored in this browser for convenience. The contract and StudioNet RPC remain the source of financial and governance data. The dashboard discovers the latest 30 proposals and projects and latest 20 records per vault category through bounded contract views.</p>
         </details>
 
         <section className="dashboard-section" id="treasury">
@@ -489,6 +623,17 @@ export function App() {
                 <button className="button button-primary" disabled={!wallet || !handles.proposalId.trim()} onClick={() => vote(true)}>Vote for</button>
                 <button className="button button-outline" disabled={!wallet || !handles.proposalId.trim()} onClick={() => vote(false)}>Vote against</button>
               </div>
+            </article>
+          </div>
+          <div className="two-column section-space">
+            <article className="panel discovery-panel">
+              <div className="panel-heading"><div><h3>Recent proposals</h3><p>Newest records from the Core contract index.</p></div><span className="query-tag tag-muted">{proposalIndex.length} loaded</span></div>
+              {indexError && <p className="unavailable">Index read issue: {indexError}</p>}
+              {proposalIndex.length ? <div className="discovery-list">{proposalIndex.map((item) => <button className="discovery-row" key={item.id} onClick={() => { update("proposalId", item.id); setMessage(`Selected proposal ${item.id}. Refresh onchain state to load full details.`); }}><code>{item.id}</code><span>{item.kind}</span><span className="state-pill">{item.status}</span></button>)}</div> : <p className="empty-state">No indexed proposals returned. Refresh after entering a Core address.</p>}
+            </article>
+            <article className="panel discovery-panel">
+              <div className="panel-heading"><div><h3>Registered projects</h3><p>Project IDs and their registered vault addresses.</p></div><span className="query-tag tag-muted">{projectIndex.length} loaded</span></div>
+              {projectIndex.length ? <div className="discovery-list">{projectIndex.map((item) => <button className="discovery-row project-row" key={item.id} onClick={() => { update("projectId", item.id); update("vaultAddress", item.vault); setMessage(`Selected project ${item.id}. Refresh onchain state to load its evidence and vault.`); }}><code>{item.id}</code><span>{item.vault || "Vault unavailable"}</span></button>)}</div> : <p className="empty-state">No registered project index entries returned.</p>}
             </article>
           </div>
         </section>
@@ -519,6 +664,29 @@ export function App() {
             <DataPanel title="Milestone challenge deadline" result={dashboard.milestoneDispute} labels={["Dispute window ends (UTC)"]} />
             <DataPanel title="Default dispute" result={dashboard.default} labels={["Default state"]} />
           </div>
+          <div className="two-column section-space">
+            <article className="panel workflow-panel">
+              <div className="panel-heading"><div><h3>Propose a milestone</h3><p>Creates a governance proposal. It does not configure or fund the vault until the DAO approves and executes it.</p></div><span className="query-tag tag-muted">Member signature</span></div>
+              <form className="workflow-form" onSubmit={(event) => { event.preventDefault(); void proposeMilestone(event.currentTarget); }}>
+                <label className="field"><span>Proposal ID</span><input name="proposalId" required /></label>
+                <label className="field"><span>Project ID</span><input name="projectId" required defaultValue={handles.projectId} /></label>
+                <label className="field"><span>Milestone ID</span><input name="milestoneId" required /></label>
+                <label className="field"><span>Amount (wei)</span><input name="amount" inputMode="numeric" pattern="[1-9][0-9]*" required /></label>
+                <label className="field workflow-wide"><span>Milestone criteria</span><textarea name="criteria" maxLength={1000} required /></label>
+                <button className="button button-primary" disabled={!wallet}>Sign milestone proposal</button>
+              </form>
+              <p className="config-footnote">The amount is entered in wei. Confirm the contract and terms in your wallet before signing.</p>
+            </article>
+            <article className="panel workflow-panel">
+              <div className="panel-heading"><div><h3>Challenge a milestone</h3><p>Your digest is a challenge reference, not an independent AI assessment.</p></div><span className="query-tag tag-muted">Member signature</span></div>
+              <form className="workflow-form" onSubmit={(event) => { event.preventDefault(); void challengeMilestone(event.currentTarget); }}>
+                <label className="field"><span>Project ID</span><input name="projectId" required defaultValue={handles.projectId} /></label>
+                <label className="field"><span>Milestone ID</span><input name="milestoneId" required defaultValue={handles.milestoneId} /></label>
+                <label className="field workflow-wide"><span>Evidence digest or reference</span><input name="digest" required /></label>
+                <button className="button button-outline" disabled={!wallet}>Sign challenge</button>
+              </form>
+            </article>
+          </div>
         </section>
 
         <section className="dashboard-section" id="payments">
@@ -546,6 +714,14 @@ export function App() {
             <DataPanel title="Revenue report vs deposit" detail="Reported income is not native GEN received" result={dashboard.revenue} labels={["Reported revenue (wei)", "GEN received (wei)"]} />
             <DataPanel title="Agreement closure guard" result={dashboard.canClose} labels={["Can close under vault obligations"]} />
           </div>
+        </section>
+
+        <section className="dashboard-section" id="vault-activity">
+          <SectionHeading eyebrow="05 · Vault index" title="Agreements and cashflow records" text="Select an indexed record, then refresh to read its latest finalized contract state." />
+          <article className="panel discovery-panel">
+            <div className="panel-heading"><div><h3>Recent vault activity</h3><p>Milestones, payouts, refunds, repayments, distributions and revenue reports.</p></div><span className="query-tag tag-muted">{vaultActivity.length} loaded</span></div>
+            {vaultActivity.length ? <div className="discovery-list">{vaultActivity.map((item) => <button className="discovery-row" key={`${item.kind}:${item.id}`} onClick={() => selectIndexedActivity(item)}><span>{item.kind}</span><code>{item.id}</code><span className="state-pill">{item.status}</span></button>)}</div> : <p className="empty-state">No vault index entries returned. Set or discover a registered vault, then refresh.</p>}
+          </article>
         </section>
 
         <section className="dashboard-section" id="activity">
@@ -579,11 +755,11 @@ export function App() {
                 <div className="report-summary">{keeperReport.watches.length} tracked transactions · {keeperReport.alerts.length} alerts · generated {keeperReport.generated_at ?? "time unavailable"}</div>
                 <div className="report-list">
                   {keeperReport.watches.map((item, index) => (
-                    <div className="report-row" key={`${String(item.tx_id)}-${index}`}>
+                    <button className="report-row report-row-button" key={`${String(item.tx_id)}-${index}`} onClick={() => void inspectTransaction(String(item.tx_id ?? ""))}>
                       <code>{String(item.tx_id ?? "transaction ID unavailable")}</code>
                       <span className={`state-pill state-${String(item.state ?? "unknown").toLowerCase()}`}>{String(item.state ?? "UNKNOWN")}</span>
                       <span>{String(item.transfer_id ?? "transfer ID unavailable")}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
                 <div className="report-list">

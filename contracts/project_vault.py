@@ -1,8 +1,9 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 """ProjectVault with parent-bound financing and milestone accounting.
 
-Outbound payments use a recipient-IC callback protocol. Queued child messages
-are never reported as settled until the beneficiary state is read back.
+IC payouts use an authenticated receipt callback. EOA external transfers remain
+unverified because the current SDK cannot link their execution receipt to the
+parent intent. Queued child messages are never treated as settled.
 """
 from genlayer import *
 from datetime import datetime, timezone
@@ -28,6 +29,7 @@ class ProjectVault(gl.Contract):
     allocations: TreeMap[str, u256]
     refund_status: TreeMap[str, str]
     refund_amount: TreeMap[str, u256]
+    refund_ids: DynArray[str]
     agreement_id: str
     agreement_allocation_id: str
     agreement_operator: Address
@@ -50,6 +52,7 @@ class ProjectVault(gl.Contract):
     total_repayment_received_wei: u256
     repayment_status: TreeMap[str, str]
     repayment_amount: TreeMap[str, u256]
+    repayment_ids: DynArray[str]
     installment_paid_wei: TreeMap[str, u256]
     total_revenue_reported_wei: u256
     total_revenue_received_wei: u256
@@ -72,6 +75,7 @@ class ProjectVault(gl.Contract):
     milestone_dispute_ends_at: TreeMap[str, u256]
     milestone_obligations_wei: u256
     payout_status: TreeMap[str, str]
+    payout_ids: DynArray[str]
     payout_milestone: TreeMap[str, str]
     payout_amount: TreeMap[str, u256]
     payout_destination: TreeMap[str, Address]
@@ -481,6 +485,7 @@ must return eligible=false. Source content JSON: {page}"""
         self._release_milestone_obligation(milestone_id)
         self.payout_reserved_wei += amount
         self.payout_status[payment_id] = "PENDING"
+        self.payout_ids.append(payment_id)
         self.unsettled_payout_count += u256(1)
         self.payout_milestone[payment_id] = milestone_id
         self.payout_amount[payment_id] = amount
@@ -581,6 +586,7 @@ must return eligible=false. Source content JSON: {page}"""
         self.total_repayment_received_wei += amount
         self.repayment_amount[repayment_id] = amount
         self.repayment_status[repayment_id] = "RECEIVED"
+        self.repayment_ids.append(repayment_id)
 
     @gl.public.write
     def report_revenue(self, period_id: str, reported_revenue_wei: u256) -> None:
@@ -821,6 +827,7 @@ must return eligible=false. Source content JSON: {page}"""
             raise gl.vm.UserError("insufficient vault balance")
         # No automatic retries: if the child fails, funds may not return.
         self.refund_status[refund_id] = "SCHEDULED"
+        self.refund_ids.append(refund_id)
         self.refund_amount[refund_id] = amount_wei
         self.total_refund_scheduled_wei += amount_wei
         self.refund_reserved_wei += amount_wei
@@ -928,6 +935,66 @@ must return eligible=false. Source content JSON: {page}"""
             self.distribution_return_wei.get(distribution_id, u256(0)),
             self.distribution_total_wei.get(distribution_id, u256(0)),
         )
+
+    @gl.public.view
+    def get_milestone_count(self) -> u256:
+        return u256(len(self.milestone_ids))
+
+    @gl.public.view
+    def get_milestone_id_at(self, index: u256) -> str:
+        if index >= u256(len(self.milestone_ids)):
+            return ""
+        return self.milestone_ids[int(index)]
+
+    @gl.public.view
+    def get_payout_count(self) -> u256:
+        return u256(len(self.payout_ids))
+
+    @gl.public.view
+    def get_payout_id_at(self, index: u256) -> str:
+        if index >= u256(len(self.payout_ids)):
+            return ""
+        return self.payout_ids[int(index)]
+
+    @gl.public.view
+    def get_refund_count(self) -> u256:
+        return u256(len(self.refund_ids))
+
+    @gl.public.view
+    def get_refund_id_at(self, index: u256) -> str:
+        if index >= u256(len(self.refund_ids)):
+            return ""
+        return self.refund_ids[int(index)]
+
+    @gl.public.view
+    def get_repayment_count(self) -> u256:
+        return u256(len(self.repayment_ids))
+
+    @gl.public.view
+    def get_repayment_id_at(self, index: u256) -> str:
+        if index >= u256(len(self.repayment_ids)):
+            return ""
+        return self.repayment_ids[int(index)]
+
+    @gl.public.view
+    def get_distribution_count(self) -> u256:
+        return u256(len(self.distribution_ids))
+
+    @gl.public.view
+    def get_distribution_id_at(self, index: u256) -> str:
+        if index >= u256(len(self.distribution_ids)):
+            return ""
+        return self.distribution_ids[int(index)]
+
+    @gl.public.view
+    def get_revenue_period_count(self) -> u256:
+        return u256(len(self.revenue_period_ids))
+
+    @gl.public.view
+    def get_revenue_period_id_at(self, index: u256) -> str:
+        if index >= u256(len(self.revenue_period_ids)):
+            return ""
+        return self.revenue_period_ids[int(index)]
 
     @gl.public.view
     def get_milestone_summary(self, milestone_id: str) -> tuple[str, u256, str]:

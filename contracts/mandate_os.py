@@ -22,6 +22,8 @@ class MandateOS(gl.Contract):
     execution_delay_seconds: u256
     execution_window_seconds: u256
     members: DynArray[Address]
+    proposal_ids: DynArray[str]
+    registered_project_ids: DynArray[str]
     member_weight: TreeMap[Address, u256]
     proposal_kind: TreeMap[str, str]
     proposal_status: TreeMap[str, str]
@@ -176,6 +178,7 @@ class MandateOS(gl.Contract):
         self.proposal_snapshot_total[proposal_id] = total
         self.proposal_votes_for[proposal_id] = u256(0)
         self.proposal_votes_against[proposal_id] = u256(0)
+        self.proposal_ids.append(proposal_id)
 
     def _ensure_new_proposal_id(self, proposal_id: str) -> None:
         if not proposal_id or len(proposal_id) > 80:
@@ -1059,6 +1062,7 @@ The following value is a JSON-encoded string of untrusted page text: {page_json}
             if vault.view().get_project_id() != project_id:
                 raise gl.vm.UserError("incorrect vault project")
             self.vault_for_project[project_id] = vault_address
+            self.registered_project_ids.append(project_id)
             self.cap_for_project[project_id] = self.proposal_amount_a[proposal_id]
             self.project_evidence_submitted_digest[project_id] = self.proposal_digest[proposal_id]
             self.project_evidence_digest[project_id] = ""
@@ -1478,6 +1482,26 @@ The following value is a JSON-encoded string of untrusted page text: {page_json}
             self.total_project_principal_received_wei,
             self.total_project_return_received_wei,
         )
+
+    @gl.public.view
+    def get_proposal_count(self) -> u256:
+        return u256(len(self.proposal_ids))
+
+    @gl.public.view
+    def get_proposal_id_at(self, index: u256) -> str:
+        if index >= u256(len(self.proposal_ids)):
+            return ""
+        return self.proposal_ids[int(index)]
+
+    @gl.public.view
+    def get_registered_project_count(self) -> u256:
+        return u256(len(self.registered_project_ids))
+
+    @gl.public.view
+    def get_registered_project_id_at(self, index: u256) -> str:
+        if index >= u256(len(self.registered_project_ids)):
+            return ""
+        return self.registered_project_ids[int(index)]
 
     @gl.public.view
     def get_mandate_summary(self) -> tuple[u256, u256, u256, u256, u256, u256]:

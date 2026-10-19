@@ -70,6 +70,9 @@ def test_agreement_is_parent_bound_and_milestone_schedule_is_capped(direct_vm, d
     ):
         vault.define_milestone("launch", 41, "Verified launch")
     assert vault.get_milestone_status("build") == "DEFINED"
+    assert vault.get_milestone_count() == 1
+    assert vault.get_milestone_id_at(0) == "build"
+    assert vault.get_milestone_id_at(1) == ""
     assert vault.milestone_obligations_wei == 60
     assert vault.get_refund_available_wei() == 40
 
@@ -107,6 +110,9 @@ def test_payout_reservation_cannot_overlap_refund_and_requires_reconciliation(
     direct_vm._gl_call_hook = hook
     with direct_vm.prank(parent):
         vault.initiate_milestone_payout("payment-1", "build")
+    assert vault.get_payout_count() == 1
+    assert vault.get_payout_id_at(0) == "payment-1"
+    assert vault.get_payout_id_at(1) == ""
     # Direct Mode does not debit the asynchronous child value; this fixture
     # applies the documented balance effect before subsequent cash checks.
     direct_vm.deal(bytes(direct_vm._contract_address), 60)
@@ -280,6 +286,9 @@ def test_repayments_separate_principal_recovery_from_realized_return(direct_vm, 
     assert vault.realized_return_wei == 10
     assert vault.total_repayment_received_wei == 50
     assert vault.get_repayment_status("repayment-1") == "RECEIVED"
+    assert vault.get_repayment_count() == 2
+    assert vault.get_repayment_id_at(0) == "repayment-1"
+    assert vault.get_repayment_id_at(1) == "repayment-2"
     direct_vm.deal(payer, 25)
     direct_vm.value = 25
     with direct_vm.expect_revert("repayment amount or unique id invalid"):
