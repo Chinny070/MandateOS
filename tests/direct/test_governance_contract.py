@@ -617,6 +617,43 @@ def test_single_member_bootstrap_can_only_propose_second_member(direct_vm, direc
         treasury.propose_evidence_source(
             "single-evidence", "project-a", "https://example.org/evidence", "criteria",
         )
+    single_voter_guards = (
+        (
+            "at least two DAO members required for allocations",
+            lambda: treasury.propose_allocation("single-allocation", "project-a", 1),
+        ),
+        (
+            "at least two DAO members required for agreements",
+            lambda: treasury.propose_project_agreement(
+                "single-agreement", "project-a", "agreement-a", "allocation-a",
+                _hex(create_address("solo-operator")), _hex(create_address("solo-beneficiary")),
+                "EOA", "GRANT", 1, 0, 0, 0, 0, 0,
+            ),
+        ),
+        (
+            "at least two DAO members required to close agreements",
+            lambda: treasury.propose_agreement_close("single-close", "project-a"),
+        ),
+        (
+            "at least two DAO members required for distributions",
+            lambda: treasury.propose_vault_distribution("single-distribution", "project-a", "dist-a", 1, 0),
+        ),
+        (
+            "at least two DAO members required for milestones",
+            lambda: treasury.propose_vault_milestone("single-milestone", "project-a", "milestone-a", 1, "criteria"),
+        ),
+        (
+            "at least two DAO members required for dispute resolution",
+            lambda: treasury.propose_milestone_resolution("single-resolution", "project-a", "milestone-a", True),
+        ),
+        (
+            "at least two DAO members required for default resolution",
+            lambda: treasury.propose_default_resolution("single-default", "project-a", True),
+        ),
+    )
+    for error, proposal in single_voter_guards:
+        with direct_vm.prank(founder), direct_vm.expect_revert(error):
+            proposal()
 
     # The bootstrap exception is limited to onboarding another voter.
     second = create_address("second-bootstrap-member")
