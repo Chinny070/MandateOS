@@ -13,7 +13,8 @@ if ([string]::IsNullOrWhiteSpace($env:MANDATEOS_PROJECT_ID)) {
 
 $Branch = (& git -C $RepoRoot branch --show-current).Trim()
 if ($Branch -ne "codex/onchain-governance") { throw "Refusing deployment from branch '$Branch'." }
-if ((& git -C $RepoRoot status --porcelain).Trim()) { throw "Refusing deployment from a dirty working tree." }
+$WorkingTreeStatus = (& git -C $RepoRoot status --porcelain | Out-String).Trim()
+if ($WorkingTreeStatus) { throw "Refusing deployment from a dirty working tree." }
 
 $CliVersion = (& genlayer --version).Trim()
 if ($LASTEXITCODE -ne 0 -or $CliVersion -ne "0.39.1") {
