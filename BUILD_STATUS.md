@@ -28,10 +28,10 @@ The linter must run with UTF-8 output on this Windows host (`$env:PYTHONIOENCODI
 
 ## Delivery blockers
 
-- Development branch `codex/onchain-governance` was created from `4b446f04bb811c985230dee55b904e73412438b1`. Changes are not yet committed/pushed. `main` is not modified by this work.
+- Development branch `codex/onchain-governance` was created from `4b446f04bb811c985230dee55b904e73412438b1`. Tested implementation commit `560b60ee0b5f66f386c7bc69abd6c4fbec8d68c1` was pushed normally; GitHub API confirmed the branch at that SHA. `main` remains at the verified base commit.
 - No StudioNet wallet/faucet funding is available in this environment. No deployment, GEN movement, real transaction receipt, or balance claim is made.
 - `CODEX_MASTER_PROMPT.md` describes desired follow-on product behavior. It does not make administrator-only lab transfer methods production authorization.
 
 ## Local milestone
 
-- No development-branch commit recorded yet.
+- Verified development milestone: `560b60ee0b5f66f386c7bc69abd6c4fbec8d68c1` (`Integrate governance-gated treasury allocations`); pushed to `origin/codex/onchain-governance`.
