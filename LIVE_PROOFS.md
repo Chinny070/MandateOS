@@ -10,6 +10,6 @@
 | ProjectVault deployment | NOT DEPLOYED | No contract address, deployment transaction, or source hash. |
 | GEN deposit/funding/refund | NOT EXECUTED | No wallet/faucet operation was attempted. No transaction IDs, finalization outcomes, child receipts, or before/after balances exist. |
 | Contract settlement callbacks | IMPLEMENTED, NOT EXECUTED | MandateOS and ProjectVault now contain finalized-child success callbacks and explicit state reconciliation methods. Static lint and Direct Mode guard tests pass; Direct Mode does not execute asynchronous children. |
-| GitHub remote | PUSH VERIFIED | Normal fast-forward push succeeded; GitHub connector confirms `main` at `bdff1703fab7340e6476576bbf8904b3a0d7ea6b`, matching local `HEAD`. No force push was used. |
+| GitHub remote | BASELINE VERIFIED | Work starts from `main` commit `4b446f04bb811c985230dee55b904e73412438b1`. Development changes are on `codex/onchain-governance`; until push is confirmed, no new remote commit is claimed. |
 
-Local Direct Mode tests and in-memory balances are not live execution and are deliberately excluded from this table. Update this record only with independently checked StudioNet transactions, parent/child receipt relationships, and before/after contract balances.
+Local Direct Mode now exercises contract governance and allocation authorization, but its clock and balances are fixtures; vault identity views and child message enqueueing are stubbed. These results are not live execution and are deliberately excluded from StudioNet transaction proof. Update this record only with independently checked StudioNet transactions, parent/child receipt relationships, and before/after contract balances.

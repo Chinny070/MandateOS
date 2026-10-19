@@ -26,7 +26,9 @@ def test_treasury_admin_and_funding_guards(direct_vm, direct_deploy):
     assert treasury.get_funding_status("missing") == "UNKNOWN"
     assert treasury.get_refund_status("missing") == "UNKNOWN"
 
-    with direct_vm.expect_revert("unregistered project"):
+    with direct_vm.expect_revert("vault registration requires finalized governance"):
+        treasury.register_vault("project", "0x" + "11" * 20, 100)
+    with direct_vm.expect_revert("allocation not authorized"):
         treasury.fund_project_vault("missing", "allocation-1", 1)
 
 
@@ -84,6 +86,7 @@ def test_funding_success_callback_requires_registered_vault_and_exact_amount(dir
     treasury.funding_project["allocation-a"] = "project-a"
     treasury.funding_amount["allocation-a"] = 17
     treasury.funding_status["allocation-a"] = "PENDING"
+    treasury.allocation_status["allocation-a"] = "FUNDING_PENDING"
     treasury.pending_transfer_wei = 17
 
     with direct_vm.prank(create_address("untrusted-callback")), direct_vm.expect_revert("untrusted funding sender"):

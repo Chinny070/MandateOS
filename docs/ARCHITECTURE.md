@@ -27,7 +27,13 @@ Use one repo. Independent contracts are deployed and verified on the same Studio
 
 Choose and document whether value is sent only when a challenge window expires, or if an earlier accepted decision must be confirmed at protocol finalization. Default to `on='finalized'` for all fund-moving child messages. Keep a separate `funding_intent -> message_queued -> child_processed -> destination_verified` lifecycle. Do not allow an unauthenticated callback to advance accounting.
 
-## Required contract methods (target, NOT starter implementation)
+## MandateOS contract methods implemented in the current development branch
+
+The contract contains persistent member/weight snapshots, proposal vote accounting, quorum/approval rules, voting deadlines and execution timelocks. Public write methods include `propose_member_add`, `propose_mandate_update`, `propose_vault_registration`, `propose_allocation`, `evaluate_allocation`, `vote`, `finalize_governance_proposal`, `execute_governance_proposal`, `challenge_allocation`, `propose_challenge_resolution`, `finalize_allocation`, `cancel_allocation`, and `fund_project_vault`. Views expose member weight, proposal status/timing, allocation status/details and spendable treasury balance. The legacy `register_vault` call is retained for interface compatibility but reverts; registration must go through finalized governance. Funding is permissionless only after the exact allocation reaches `AUTHORIZED` and still matches its mandate version.
+
+The current implementation is not a release-ready evidence or financial lifecycle: project evidence is a member-submitted digest/timestamp established during registration, not a native web assessment; cross-contract Direct Mode views and child queues are fixtures; child execution is not tested; refunds remain administrator initiated and lab-only; membership removal and full governance policy evolution are not implemented.
+
+## Remaining required contract methods (not implemented)
 
 **MandateOS:** `deposit`, `create_governance_proposal`, `vote`, `execute_governance_proposal`, `create_mandate`, `amend_mandate`, `register_project`, `evaluate_project`, `refresh_project_evidence`, `propose_allocation`, `challenge_allocation`, `resolve_allocation_challenge`, `finalize_allocation`, `fund_project_vault`, `reconcile_funding`, `request_refund`, `receive_refund`, `record_vault_settlement`, `get_treasury_summary`, `get_portfolio_exposure`, `get_evidence_receipt`.
 

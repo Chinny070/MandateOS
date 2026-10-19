@@ -17,8 +17,9 @@
 
 ## Gate 2: Governance and risk
 
-- Multi-member DAO with quorum, vote accounting, mandate immutable history, timelocks, per-project exposure + reserve tests, governance expiry and policy change safety.
-- Repeatability: freeze and reject proposals violating 20%-style limits across pending commitments and outstanding principal. Reject arbitrary owner exception.
+- Direct Mode contract tests cover: member registration; membership snapshots and ineligible/duplicate/late votes; quorum and approval rejection; voting and execution deadlines; mandate bounds and version expiry; governance-gated vault registration; proposal/evaluate/authorize/challenge/resolve/cancel/expire lifecycle; concentration, liquid reserve and pending-transfer reservations; permissionless submission only for an exact authorized allocation; replayed funding denial.
+- Both actual MandateOS contract entry points and state transitions are exercised. Deterministic clock and balance are Direct Mode fixtures. Cross-contract identity views and child-transaction enqueueing are stubbed; there is no child execution or settlement proof.
+- Remaining Gate 2 checks: native validator-backed evidence, historical mandate inspection, member removal/delegation policy, independently verified full async child failure/recovery, governed repayment/refund lifecycle and live consensus.
 
 ## Gate 3: Evidence + clock + consensus
 
@@ -40,4 +41,4 @@
 
 - Fuzz/property/invariant tests and full regression, documented threat model, no bypassed security tests, code hash verification, fresh wallet secrets excluded, source/docs/transaction report, no unaddressed critical findings. Mark each gate `PASS`, `PARTIAL`, `BLOCKED` or `FAIL` with actual evidence.
 
-**Important:** This starter has NO live StudioNet proofs. The only tests executed when packaging were pure Python reference-model tests and Python source compile checks.
+**Important:** There are no live StudioNet proofs. Pure Python reference tests and Direct Mode contract tests are distinct evidence classes; neither proves validator consensus or GEN settlement.

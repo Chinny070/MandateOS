@@ -1,3 +1,5 @@
-# Direct-mode tests required
+# GenLayer Direct Mode contract tests
 
-Not yet implemented. Codex must implement SDK-backed tests of both GenLayer contracts using `genlayer-test` and actual mocked VM semantics. Target authorization, value, replay, parent authentication, delay/consensus, policy, and timeout invariants. Do not silently skip them if runner unavailable.
+Run with `python -m pytest tests/direct -q`. These tests execute contract code under GenLayer Direct Mode and cover MandateOS deposit/funding guards and governance-gated allocations, vote snapshots, quorum, timelocks, mandate/risk checks, dispute resolution, cancellation and replay denial.
+
+Direct Mode is local execution, not StudioNet validator consensus. The governance pipeline test uses a deterministic balance and clock fixture and stubs only ProjectVault identity views and the asynchronous child-message queue because Direct Mode loads one IC class per VM. It verifies MandateOS authorization and queue construction; it does not execute ProjectVault or prove a GEN transfer.
