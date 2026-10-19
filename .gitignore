@@ -1,0 +1,16 @@
+__pycache__/
+.pytest_cache/
+.venv/
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.pyc
+coverage/
+artifacts/
+.DS_Store
+# Keep sanitized proof logs, never private signing material
+wallet*.json
+*private-key*

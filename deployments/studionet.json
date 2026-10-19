@@ -1,0 +1,10 @@
+{
+  "network": "studionet",
+  "chain_id_expected": 61999,
+  "rpc_url": "https://studio.genlayer.com/api",
+  "mandate_os_address": null,
+  "project_vault_addresses": {},
+  "deploy_transaction_ids": [],
+  "verified_gen_transfer_ids": [],
+  "status": "NOT_DEPLOYED"
+}

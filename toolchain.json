@@ -1,0 +1,22 @@
+{
+  "verified_on": "2026-10-19",
+  "os": "Windows 11 x64",
+  "python": "3.12.10",
+  "node": "24.14.0",
+  "npm": "11.9.0",
+  "genlayer_cli": "0.39.1",
+  "python_packages": {
+    "pytest": "8.4.2",
+    "genlayer_test": "0.29.2",
+    "genlayer_py": "0.16.3",
+    "genvm_linter": "0.11.1rc2"
+  },
+  "contract_sdk_dependency": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6",
+  "target_network": {
+    "name": "StudioNet",
+    "chain_id_expected": 61999,
+    "rpc_url": "https://studio.genlayer.com/api",
+    "probe_status": "BLOCKED_SANDBOX_NETWORK_DISABLED"
+  },
+  "limits": "Tool versions were read from the installed environment. StudioNet RPC chain ID was not observed; Direct Mode is not live validator consensus."
+}
