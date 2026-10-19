@@ -180,10 +180,18 @@ class Monitor:
                     watch["tx_id"], "EXTERNAL_INTENT_OBSERVED", "UNKNOWN",
                     "parent emitted the exact authorized external message; SDK child IDs cover internal messages only",
                 )
-                return self._finish(
+                acknowledgment = self._read_eoa_acknowledgment(watch)
+                self.archive.append_receipt(watch["tx_id"], "recipient_acknowledgment", acknowledgment)
+                self.archive.audit(
+                    watch["tx_id"], "BENEFICIARY_ATTESTATION", acknowledgment["status"],
+                    json.dumps(acknowledgment, sort_keys=True),
+                )
+                result = self._finish(
                     watch, "UNKNOWN",
                     "external EOA execution has no supported parent-linked child receipt; no automatic retry permitted",
                 )
+                result["recipient_acknowledgment"] = acknowledgment
+                return result
 
             child_candidates = []
             for child_id in triggered:
@@ -252,6 +260,65 @@ class Monitor:
     def _balance_snapshots(self, tx_id: str) -> list[dict[str, int]]:
         # Archive exposes deduplicated snapshots for restart recovery.
         return self.archive.balance_snapshots(tx_id)
+
+    def _read_eoa_acknowledgment(self, watch: dict[str, Any]) -> dict[str, Any]:
+        base = {
+            "status": "UNKNOWN",
+            "evidence_type": "beneficiary_attestation",
+            "project_vault": watch["source_address"],
+            "project_id": "",
+            "payment_id": watch["transfer_id"],
+            "beneficiary": watch["destination_address"],
+            "amount_wei": str(watch["amount_wei"]),
+            "signer": "",
+            "acknowledged_at": "0",
+            "settlement_status": "UNVERIFIED",
+        }
+        try:
+            raw = self.reader.read_contract(
+                watch["source_address"],
+                "get_eoa_payout_acknowledgment",
+                [watch["transfer_id"]],
+            )
+            fields = list(raw) if isinstance(raw, (list, tuple)) else []
+            if len(fields) < 8:
+                base["reason"] = "ProjectVault returned no complete beneficiary acknowledgment view"
+                return base
+            status, vault, project, payment, beneficiary, amount, signer, timestamp = fields[:8]
+            amount_value = _quantity(amount)
+            timestamp_value = _quantity(timestamp)
+            identity_matches = (
+                str(vault).lower() == watch["source_address"].lower()
+                and str(payment) == watch["transfer_id"]
+                and str(beneficiary).lower() == watch["destination_address"].lower()
+                and amount_value == int(watch["amount_wei"])
+            )
+            acknowledgment_status = str(status)
+            if acknowledgment_status == "RECIPIENT_ACKNOWLEDGED":
+                identity_matches = (
+                    identity_matches
+                    and str(signer).lower() == watch["destination_address"].lower()
+                    and timestamp_value is not None and timestamp_value > 0
+                )
+            if not identity_matches:
+                acknowledgment_status = "ATTESTATION_MISMATCH"
+            elif acknowledgment_status not in {"NOT_ACKNOWLEDGED", "RECIPIENT_ACKNOWLEDGED"}:
+                acknowledgment_status = "UNKNOWN"
+            base.update({
+                "status": acknowledgment_status,
+                "project_vault": str(vault),
+                "project_id": str(project),
+                "payment_id": str(payment),
+                "beneficiary": str(beneficiary),
+                "amount_wei": str(amount_value) if amount_value is not None else "UNKNOWN",
+                "signer": str(signer),
+                "acknowledged_at": str(timestamp_value) if timestamp_value is not None else "UNKNOWN",
+                "reason": "beneficiary onchain attestation only; external GEN settlement remains unverified",
+            })
+            return base
+        except Exception as error:
+            base["reason"] = f"beneficiary acknowledgment read failed: {type(error).__name__}"
+            return base
 
     def _finish(self, watch: dict[str, Any], state: str, reason: str) -> dict[str, Any]:
         self.archive.set_state(watch["tx_id"], state)

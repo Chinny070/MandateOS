@@ -10,6 +10,8 @@ The project is **not production ready**. Local tests, Direct Mode execution, sta
 
 EOA milestone payouts remain unsuitable for production settlement. The supported GenLayer SDK exposes internal IC message child IDs but not a causally linked receipt for the external EOA value transfer. Such a payment remains pending or value-at-risk; it cannot be marked successful or retried automatically.
 
+The configured EOA beneficiary can sign a separate ProjectVault acknowledgment for the exact payment ID and expected amount. The onchain record proves that the beneficiary wallet attested to receipt; it does not change payout settlement status or reservations and is not independent settlement evidence.
+
 Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [docs/DEPLOYMENT_READINESS.md](docs/DEPLOYMENT_READINESS.md) for verified results, blockers, exact deployment order, and the small-value runbook.
 
 ## Repository layout

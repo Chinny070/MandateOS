@@ -42,4 +42,6 @@ For IC recipients, `VERIFIED` requires one exactly matching triggered child, fin
 
 The keeper does not submit supported permissionless onchain maintenance calls. Those can be invoked by a wallet through the normal contract interface after a user reviews the precise call. The keeper identifies conditions and records observations only.
 
+For an EOA milestone payout watch, set `transfer_id` to the ProjectVault payment ID, `source_address` to that ProjectVault, and `destination_address` to the authorized beneficiary wallet. After confirming the exact finalized external intent, the keeper reads `get_eoa_payout_acknowledgment(payment_id)` from that vault and stores the result in the receipt archive and a `BENEFICIARY_ATTESTATION` audit event. Reports label this as a beneficiary attestation and keep transfer state `UNKNOWN`; the acknowledgment does not prove settlement, release a reservation, or enable retry.
+
 Tests use deterministic local fixtures. They are not StudioNet execution or settlement proof.

@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
 import { TransactionHashVariant } from "genlayer-js/types";
 import {
   formatUtcTimestamp,
   formatWei,
+  canAcknowledgeEoaPayout,
   mapEoaSettlementState,
+  mapRecipientAcknowledgment,
   mapTransactionState,
   serialize,
 } from "./models";
@@ -64,7 +66,11 @@ const HASH = /^0x[0-9a-fA-F]{64}$/;
 
 declare global {
   interface Window {
-    ethereum?: { request: (request: { method: string; params?: unknown[] }) => Promise<unknown> };
+    ethereum?: {
+      request: (request: { method: string; params?: unknown[] }) => Promise<unknown>;
+      on?: (event: string, listener: (...args: unknown[]) => void) => void;
+      removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
+    };
   }
 }
 
@@ -174,6 +180,8 @@ function SectionHeading({ eyebrow, title, text }: { eyebrow: string; title: stri
 export function App() {
   const [handles, setHandles] = useState<Handles>(initialHandles);
   const [wallet, setWallet] = useState("");
+  const [walletChainId, setWalletChainId] = useState("");
+  const [acknowledgmentSubmitting, setAcknowledgmentSubmitting] = useState(false);
   const [dashboard, setDashboard] = useState<DashboardData>({});
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
@@ -190,6 +198,23 @@ export function App() {
   const effectiveMemberAddress = handles.memberAddress || wallet;
   const discoveredVault = dashboard.registeredVault?.ok ? String(dashboard.registeredVault.value) : "";
   const effectiveVault = handles.vaultAddress || (ADDRESS.test(discoveredVault) ? discoveredVault : "");
+
+  useEffect(() => {
+    const provider = window.ethereum;
+    if (!provider) return;
+    const handleChain = (chain: unknown) => setWalletChainId(String(chain ?? "").toLowerCase());
+    const handleAccounts = (accounts: unknown) => {
+      setWallet(Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : "");
+    };
+    void provider.request({ method: "eth_chainId" }).then(handleChain).catch(() => setWalletChainId(""));
+    void provider.request({ method: "eth_accounts" }).then(handleAccounts).catch(() => setWallet(""));
+    provider.on?.("chainChanged", handleChain);
+    provider.on?.("accountsChanged", handleAccounts);
+    return () => {
+      provider.removeListener?.("chainChanged", handleChain);
+      provider.removeListener?.("accountsChanged", handleAccounts);
+    };
+  }, []);
 
   function update<K extends keyof Handles>(key: K, value: Handles[K]) {
     setHandles((current) => {
@@ -319,6 +344,7 @@ export function App() {
         }
         if (handles.paymentId.trim()) {
           vaultReads.push(query(next, "payout", vault, "get_payout_details", [handles.paymentId.trim()]));
+          vaultReads.push(query(next, "payoutAcknowledgment", vault, "get_eoa_payout_acknowledgment", [handles.paymentId.trim()]));
         }
         if (handles.repaymentId.trim()) {
           vaultReads.push(query(next, "repayment", vault, "get_repayment_status", [handles.repaymentId.trim()]));
@@ -379,9 +405,78 @@ export function App() {
         throw new Error("The wallet did not return an account address.");
       }
       setWallet(accounts[0]);
+      setWalletChainId(chain);
       setMessage("Wallet connected on StudioNet. The dashboard has not submitted a transaction.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Wallet connection failed.");
+    }
+  }
+
+  async function acknowledgeEoaPayout() {
+    const payout = dashboard.payout?.ok ? asArray(dashboard.payout.value) : null;
+    const acknowledgment = dashboard.payoutAcknowledgment?.ok ? dashboard.payoutAcknowledgment.value : null;
+    try {
+      if (!window.ethereum || !effectiveVault || !handles.paymentId.trim()) {
+        throw new Error("A connected wallet, ProjectVault and payment ID are required.");
+      }
+      if (!canAcknowledgeEoaPayout(wallet, walletChainId, handles.paymentId.trim(), effectiveVault, payout, acknowledgment)) {
+        throw new Error("The connected StudioNet account must match the unacknowledged EOA beneficiary.");
+      }
+      const chain = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
+      setWalletChainId(chain);
+      if (chain !== "0xf22f") throw new Error("Switch the wallet to StudioNet (chain ID 61999) before signing.");
+      if (wallet.toLowerCase() !== String(payout?.[2] ?? "").toLowerCase()) {
+        throw new Error("The connected wallet no longer matches the authorized payment beneficiary.");
+      }
+
+      const amountWei = BigInt(String(payout?.[3] ?? "0"));
+      setAcknowledgmentSubmitting(true);
+      const writer: any = createClient({
+        chain: studionet,
+        account: wallet as `0x${string}`,
+        provider: window.ethereum,
+      });
+      const call = {
+        account: wallet as `0x${string}`,
+        address: effectiveVault as `0x${string}`,
+        functionName: "acknowledge_eoa_payout_received",
+        args: [handles.paymentId.trim(), amountWei],
+      };
+      const estimate = await writer.estimateTransactionFeesForWrite(call);
+      const txId = String(await writer.writeContract({
+        ...call,
+        fees: { distribution: estimate.distribution, feeValue: estimate.feeValue },
+      }));
+      update("transactionId", txId);
+      setMessage(`Acknowledgment submitted for ${formatWei(amountWei)}. Your signature attests that this exact GEN amount reached your wallet; it does not verify settlement. Waiting for finalization.`);
+
+      if (!HASH.test(txId)) throw new Error("Wallet returned an invalid transaction ID; inspect the wallet activity manually.");
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const tx = await readClient.getTransaction({ hash: txId } as never);
+        const state = mapTransactionState(tx as any);
+        setTransaction(tx as unknown as Record<string, unknown>);
+        if (state === "FINALIZED_SUCCESS") {
+          setTriggeredIds([]);
+          await refresh();
+          const finalizedRecord = await readLatest(effectiveVault, "get_eoa_payout_acknowledgment", [handles.paymentId.trim()]);
+          setDashboard((current) => ({ ...current, payoutAcknowledgment: { ok: true, value: finalizedRecord } }));
+          const finalAcknowledgment = mapRecipientAcknowledgment(finalizedRecord);
+          setMessage(finalAcknowledgment.status === "RECIPIENT_ACKNOWLEDGED"
+            ? "Finalized recipient acknowledgment read from ProjectVault. The payout remains independently UNVERIFIED and its reservation is unchanged."
+            : "The wallet transaction finalized, but the expected acknowledgment record was not found in latest-final ProjectVault state.");
+          return;
+        }
+        if (state === "FINALIZED_FAILED" || state === "CANCELED") {
+          setMessage(`Acknowledgment transaction ended as ${state.replaceAll("_", " ")}. The payout settlement remains unverified.`);
+          return;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+      }
+      setMessage("Acknowledgment transaction is still not finalized. Refresh or inspect its receipt later; no payout or reservation state was changed by this dashboard.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Recipient acknowledgment failed.");
+    } finally {
+      setAcknowledgmentSubmitting(false);
     }
   }
 
@@ -536,9 +631,18 @@ export function App() {
   const proposalLabels = ["Proposal type", "Proposal state", "Votes for (weight)", "Votes against (weight)", "Snapshot total weight"];
   const payoutLabels = ["Contract payout state", "Beneficiary mode", "Fixed destination", "Payment amount (wei)", "Queued at (UTC)"];
   const vault = effectiveVault;
-  const eoaStatus = dashboard.payout?.ok && Array.isArray(dashboard.payout.value)
-    ? mapEoaSettlementState(String(dashboard.payout.value[0] ?? ""))
-    : "UNVERIFIED";
+  const payoutRecord = dashboard.payout?.ok ? asArray(dashboard.payout.value) : null;
+  const acknowledgmentRecord = dashboard.payoutAcknowledgment?.ok
+    ? mapRecipientAcknowledgment(dashboard.payoutAcknowledgment.value)
+    : mapRecipientAcknowledgment(null);
+  const canAcknowledgePayout = canAcknowledgeEoaPayout(
+    wallet, walletChainId, handles.paymentId.trim(), effectiveVault, payoutRecord,
+    dashboard.payoutAcknowledgment?.ok ? dashboard.payoutAcknowledgment.value : null,
+  );
+  const eoaStatus = mapEoaSettlementState(String(payoutRecord?.[0] ?? ""));
+  const keeperAcknowledgments = keeperReport?.audit_events?.filter(
+    (event) => String(event.event_type ?? "") === "BENEFICIARY_ATTESTATION",
+  ) ?? [];
   const transactionState = mapTransactionState(transaction as any);
 
   return (
@@ -696,9 +800,40 @@ export function App() {
             <article className="panel settlement-panel">
               <div className="panel-heading"><div><h3>Independent settlement</h3><p>EOA beneficiary verification</p></div><span className="query-tag tag-risk">{eoaStatus}</span></div>
               <p>The supported SDK child-ID API reads internal IC message events. It does not expose a parent-linked child receipt for the EOA external value transfer.</p>
-              <p className="risk-note">A finalized payment intent or beneficiary balance increase alone is not proof. No keeper or administrator can mark an EOA payment successful.</p>
+              <p className="risk-note">A beneficiary acknowledgment is an attestation, not independent settlement proof. No keeper or administrator can mark an EOA payment successful.</p>
             </article>
           </div>
+          <article className="panel recipient-ack-panel section-space">
+            <div className="panel-heading"><div><h3>Recipient payment confirmation</h3><p>Wallet-signed beneficiary attestation for this immutable EOA payment.</p></div><span className={`query-tag ${acknowledgmentRecord.status === "RECIPIENT_ACKNOWLEDGED" ? "tag-live" : "tag-muted"}`}>{acknowledgmentRecord.status.replaceAll("_", " ")}</span></div>
+            {payoutRecord ? (
+              <>
+                <div className="two-column compact-grid">
+                  <DataPanel title="Payment intent" result={{ ok: true, value: {
+                    "Project name / ID": handles.projectId || acknowledgmentRecord.projectId || "Not supplied",
+                    "ProjectVault address": effectiveVault || acknowledgmentRecord.projectVault,
+                    "Payment ID": handles.paymentId,
+                    "Expected receiving wallet": String(payoutRecord[2] ?? ""),
+                    "Exact amount": `${String(payoutRecord[3] ?? "0")} wei · ${formatWei(payoutRecord[3])}`,
+                    "Current payout status": String(payoutRecord[0] ?? "UNKNOWN"),
+                  } }} />
+                  <DataPanel title="Recipient acknowledgment record" detail="This is the beneficiary's onchain statement, not a transfer receipt." result={dashboard.payoutAcknowledgment} labels={["Acknowledgment status", "ProjectVault address", "Project ID", "Payment ID", "Expected beneficiary", "Acknowledged amount (wei)", "Wallet signer", "Acknowledged at (UTC)"]} />
+                </div>
+                <div className="ack-action-row">
+                  <p className="notice notice-warning">By signing, you attest that <b>{formatWei(payoutRecord[3])}</b> for payment <code>{handles.paymentId || "(select a payment)"}</code> actually reached your wallet at <code>{String(payoutRecord[2] ?? "unknown")}</code>. This statement does not independently verify settlement and does not release the payout reservation.</p>
+                  <button className="button button-primary" disabled={!canAcknowledgePayout || acknowledgmentSubmitting} onClick={() => void acknowledgeEoaPayout()}>
+                    {acknowledgmentSubmitting ? "Waiting for finalization…" : "Confirm GEN Received"}
+                  </button>
+                </div>
+                <div className="ack-status-pair">
+                  <span>Recipient acknowledged receipt: <b>{acknowledgmentRecord.status === "RECIPIENT_ACKNOWLEDGED" ? "Yes" : "No"}</b></span>
+                  <span>Independently verified settlement: <b>{eoaStatus}</b></span>
+                </div>
+                {!canAcknowledgePayout && acknowledgmentRecord.status !== "RECIPIENT_ACKNOWLEDGED" && (
+                  <p className="config-footnote">Confirmation requires an initiated EOA payout, an unacknowledged record, the exact beneficiary wallet, and StudioNet chain ID 61999.</p>
+                )}
+              </>
+            ) : <p className="empty-state">Select a payout record and refresh the latest-final ProjectVault state to review its beneficiary and amount.</p>}
+          </article>
           <div className="three-column section-space">
             <DataPanel title="Refund state" result={dashboard.treasuryRefund} labels={["MandateOS refund state"]} />
             <DataPanel title="Vault refund capacity" result={dashboard.refundAvailable} labels={["Refundable GEN (wei)"]} />
@@ -771,6 +906,20 @@ export function App() {
                     </div>
                   ))}
                 </div>
+                {keeperAcknowledgments.length > 0 && (
+                  <div className="section-space">
+                    <div className="notice notice-warning">Beneficiary acknowledgments are wallet attestations. They do not verify external GEN settlement; EOA payout state remains UNKNOWN or VALUE_AT_RISK.</div>
+                    <div className="report-list">
+                      {keeperAcknowledgments.map((item, index) => (
+                        <div className="report-row alert-row" key={`${String(item.event_id)}-ack-${index}`}>
+                          <b>Beneficiary attestation</b>
+                          <span>{String(item.state ?? "UNKNOWN")}</span>
+                          <code>{String(item.reason ?? "No attestation details")}</code>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
             ) : <p className="empty-state">No keeper report imported. No sample alerts or balances are shown.</p>}
           </article>

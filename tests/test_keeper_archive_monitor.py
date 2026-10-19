@@ -61,6 +61,10 @@ class FakeReader:
         self.source_values = [10_000, 9_000]
         self.destination_values = [20_000, 21_000]
         self.contract_value = AMOUNT
+        self.acknowledgment_record = [
+            "NOT_ACKNOWLEDGED", SOURCE, "project-a", "transfer-1",
+            DESTINATION, AMOUNT, "", 0,
+        ]
         self.fail_parent = False
 
     def verify_chain(self):
@@ -88,6 +92,8 @@ class FakeReader:
         return result
 
     def read_contract(self, address, function_name, args):
+        if function_name == "get_eoa_payout_acknowledgment":
+            return list(self.acknowledgment_record)
         return self.contract_value
 
 
@@ -139,6 +145,34 @@ def test_eoa_intent_and_matching_balance_observations_do_not_prove_external_exec
     assert result["state"] == "UNKNOWN"
     assert "external EOA execution" in result["reason"]
     assert archive.report()["watches"][0]["state"] == "UNKNOWN"
+    assert result["recipient_acknowledgment"]["status"] == "NOT_ACKNOWLEDGED"
+    assert result["recipient_acknowledgment"]["settlement_status"] == "UNVERIFIED"
+
+
+def test_keeper_reports_eoa_beneficiary_attestation_without_verifying_settlement(tmp_path):
+    archive = ReceiptArchive(tmp_path / "keeper.sqlite3")
+    archive.track(watch("EOA"))
+    reader = FakeReader()
+    reader.parent_tx = parent(status="FINALIZED", message_type="external")
+    reader.acknowledgment_record = [
+        "RECIPIENT_ACKNOWLEDGED", SOURCE, "project-a", "transfer-1",
+        DESTINATION, AMOUNT, DESTINATION, 1760000000,
+    ]
+
+    result = Monitor(archive, reader).poll_once(PARENT)
+    assert result["state"] == "UNKNOWN"
+    assert result["recipient_acknowledgment"]["status"] == "RECIPIENT_ACKNOWLEDGED"
+    assert result["recipient_acknowledgment"]["evidence_type"] == "beneficiary_attestation"
+    assert result["recipient_acknowledgment"]["settlement_status"] == "UNVERIFIED"
+    assert archive.report()["watches"][0]["state"] == "UNKNOWN"
+    audit = [event for event in archive.report()["audit_events"] if event["event_type"] == "BENEFICIARY_ATTESTATION"]
+    assert len(audit) == 1
+    assert audit[0]["state"] == "RECIPIENT_ACKNOWLEDGED"
+    assert "beneficiary_attestation" in audit[0]["reason"]
+    reader.acknowledgment_record[5] = AMOUNT + 1
+    mismatched = Monitor(archive, reader).poll_once(PARENT)
+    assert mismatched["state"] == "UNKNOWN"
+    assert mismatched["recipient_acknowledgment"]["status"] == "ATTESTATION_MISMATCH"
 
 
 def test_failed_child_is_not_reported_as_paid(tmp_path):

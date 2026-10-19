@@ -25,6 +25,8 @@ The milestone challenge digest is member-supplied reference data; it is not trea
 
 EOA payment remains `UNVERIFIED`: GenLayerJS `getTriggeredTransactionIds` reads internal IC child links, not a causally linked EVM execution record for the external EOA value transfer. Matching balance changes, addresses, amounts or timestamps are not settlement proof; no dashboard or keeper shortcut can mark success or retry an uncertain EOA transfer.
 
+For an initiated EOA payment, the exact beneficiary wallet can use **Confirm GEN Received** to sign `acknowledge_eoa_payout_received` on that ProjectVault. The interface shows the project ID, vault, payment ID, receiving wallet, exact amount, payout state, and acknowledgment state. It waits for finalization and reads the latest-final acknowledgment record afterward. `RECIPIENT_ACKNOWLEDGED` is a beneficiary attestation only: the payout remains `UNVERIFIED`, reservations remain in place, and no financial accounting changes.
+
 Keeper reports are unsigned local JSON evidence and remain visibly labeled as such. The dashboard's transaction inspector loads a user-supplied GenLayer transaction ID and available triggered internal-message IDs. It does not claim that those IDs prove EOA settlement.
 
 ## Verification

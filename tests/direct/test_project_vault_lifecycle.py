@@ -55,6 +55,31 @@ def _make_vault(direct_vm, direct_deploy, model="REPAYABLE", due_days=1, share_b
     return vault, parent, operator, beneficiary
 
 
+def _initiate_test_payout(direct_vm, direct_deploy, beneficiary_mode="EOA"):
+    direct_vm.warp(BASE.isoformat())
+    vault, parent, _, beneficiary = _make_vault(
+        direct_vm, direct_deploy, beneficiary_mode=beneficiary_mode
+    )
+    with direct_vm.prank(parent):
+        vault.define_milestone("ack-milestone", 40, "Verified milestone")
+    vault.milestone_status["ack-milestone"] = "AUTHORIZED"
+    vault.milestone_evidence_digest["ack-milestone"] = "c" * 64
+    vault.milestone_expires_at["ack-milestone"] = int((BASE + timedelta(days=1)).timestamp())
+    vault.milestone_mandate_version["ack-milestone"] = 1
+    from genlayer.py import calldata
+    from genlayer.py.public_abi import ResultCode
+
+    def external_hook(vm, request):
+        if "CallContract" in request:
+            return bytes([int(ResultCode.RETURN)]) + calldata.encode(0)
+        return None
+
+    direct_vm._gl_call_hook = external_hook
+    with direct_vm.prank(parent):
+        vault.initiate_milestone_payout("ack-payment", "ack-milestone")
+    return vault, parent, beneficiary
+
+
 def test_agreement_is_parent_bound_and_milestone_schedule_is_capped(direct_vm, direct_deploy):
     direct_vm.warp(BASE.isoformat())
     vault, parent, operator, beneficiary = _make_vault(direct_vm, direct_deploy)
@@ -200,6 +225,25 @@ def test_eoa_payout_uses_finalized_external_transfer_and_never_self_verifies(
     )
     assert vault.payout_reserved_wei == 40
     assert vault.unsettled_payout_count == 1
+    with direct_vm.prank(vault.agreement_beneficiary):
+        vault.acknowledge_eoa_payout_received("eoa-payment-1", 40)
+    acknowledgment = vault.get_eoa_payout_acknowledgment("eoa-payment-1")
+    assert acknowledgment[0] == "RECIPIENT_ACKNOWLEDGED"
+    assert acknowledgment[1].lower() == _hex(direct_vm._contract_address).lower()
+    assert acknowledgment[2:4] == ("project-lifecycle", "eoa-payment-1")
+    assert acknowledgment[4].lower() == vault.agreement_beneficiary.as_hex.lower()
+    assert acknowledgment[5] == 40
+    assert acknowledgment[6].lower() == vault.agreement_beneficiary.as_hex.lower()
+    assert acknowledgment[7] == int(BASE.timestamp())
+    assert vault.get_payout_status("eoa-payment-1") == "PENDING"
+    assert vault.payout_reserved_wei == 40
+    assert vault.unsettled_payout_count == 1
+    with direct_vm.prank(vault.agreement_beneficiary), direct_vm.expect_revert(
+        "recipient acknowledgment already recorded"
+    ):
+        vault.acknowledge_eoa_payout_received("eoa-payment-1", 40)
+    with direct_vm.prank(parent), direct_vm.expect_revert("agreement has unresolved obligations"):
+        vault.close_agreement()
     with direct_vm.prank(vault.agreement_beneficiary), direct_vm.expect_revert(
         "EOA settlement requires independent receipt reconciliation"
     ):
@@ -218,6 +262,44 @@ def test_eoa_payout_uses_finalized_external_transfer_and_never_self_verifies(
         vault.initiate_milestone_payout("eoa-payment-retry", "build")
     with direct_vm.prank(parent), direct_vm.expect_revert("agreement has unresolved obligations"):
         vault.close_agreement()
+
+
+def test_eoa_acknowledgment_rejects_wrong_wallet_and_amount(direct_vm, direct_deploy):
+    vault, _, beneficiary = _initiate_test_payout(direct_vm, direct_deploy)
+    with direct_vm.prank(create_address("wrong-eoa-beneficiary")), direct_vm.expect_revert(
+        "configured EOA beneficiary required"
+    ):
+        vault.acknowledge_eoa_payout_received("ack-payment", 40)
+    with direct_vm.prank(beneficiary), direct_vm.expect_revert(
+        "acknowledgment amount must match payout"
+    ):
+        vault.acknowledge_eoa_payout_received("ack-payment", 39)
+    assert vault.get_eoa_payout_acknowledgment("ack-payment")[0] == "NOT_ACKNOWLEDGED"
+    assert vault.get_payout_status("ack-payment") == "PENDING"
+    assert vault.payout_reserved_wei == 40
+
+
+def test_eoa_acknowledgment_rejects_unknown_payment_id(direct_vm, direct_deploy):
+    vault, _, beneficiary = _initiate_test_payout(direct_vm, direct_deploy)
+    with direct_vm.prank(beneficiary), direct_vm.expect_revert("initiated EOA payout required"):
+        vault.acknowledge_eoa_payout_received("missing-payment", 40)
+    assert vault.get_eoa_payout_acknowledgment("missing-payment")[0] == "UNKNOWN"
+
+
+def test_ic_beneficiary_cannot_use_eoa_acknowledgment(direct_vm, direct_deploy):
+    vault, _, beneficiary = _initiate_test_payout(direct_vm, direct_deploy, "IC")
+    with direct_vm.prank(beneficiary), direct_vm.expect_revert("initiated EOA payout required"):
+        vault.acknowledge_eoa_payout_received("ack-payment", 40)
+    assert vault.get_payout_status("ack-payment") == "PENDING"
+    assert vault.payout_reserved_wei == 40
+
+
+def test_eoa_acknowledgment_requires_an_initiated_payout(direct_vm, direct_deploy):
+    direct_vm.warp(BASE.isoformat())
+    vault, _, _, beneficiary = _make_vault(direct_vm, direct_deploy, beneficiary_mode="EOA")
+    with direct_vm.prank(beneficiary), direct_vm.expect_revert("initiated EOA payout required"):
+        vault.acknowledge_eoa_payout_received("not-started", 40)
+    assert vault.payout_reserved_wei == 0
 
 
 def test_governed_return_distribution_reserves_principal_and_realized_income(

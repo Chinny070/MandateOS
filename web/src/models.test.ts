@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatUtcTimestamp, formatWei, mapEoaSettlementState, mapTransactionState } from "./models";
+import {
+  canAcknowledgeEoaPayout,
+  formatUtcTimestamp,
+  formatWei,
+  mapEoaSettlementState,
+  mapRecipientAcknowledgment,
+  mapTransactionState,
+} from "./models";
 
 describe("onchain state mapping", () => {
   it("requires both finalized status and successful execution", () => {
@@ -21,6 +28,37 @@ describe("onchain state mapping", () => {
     expect(mapEoaSettlementState("PENDING")).toBe("UNVERIFIED");
     expect(mapEoaSettlementState("VERIFIED")).toBe("UNVERIFIED");
     expect(mapEoaSettlementState("VALUE_AT_RISK")).toBe("VALUE_AT_RISK");
+  });
+
+  it("maps beneficiary acknowledgment as a distinct attestation", () => {
+    const record = mapRecipientAcknowledgment([
+      "RECIPIENT_ACKNOWLEDGED", "0xvault", "project-a", "payment-1",
+      "0xbeneficiary", 1000000000000000000n, "0xbeneficiary", 1760000000n,
+    ]);
+    expect(record).toMatchObject({
+      status: "RECIPIENT_ACKNOWLEDGED",
+      projectVault: "0xvault",
+      projectId: "project-a",
+      paymentId: "payment-1",
+      amountWei: "1000000000000000000",
+      signer: "0xbeneficiary",
+      acknowledgedAt: "1760000000",
+    });
+    expect(mapEoaSettlementState("PENDING")).toBe("UNVERIFIED");
+  });
+
+  it("enables acknowledgment only for the exact EOA recipient on StudioNet before acknowledgment", () => {
+    const payout = ["PENDING", "EOA", "0xBeneficiary", 25n, 1760000000n];
+    const notAcknowledged = ["NOT_ACKNOWLEDGED", "0xVault", "project-a", "payment-1", "0xBeneficiary", 25n, "", 0n];
+    const canAck = (wallet: string, chain: string, id: string, payoutState = payout, ack = notAcknowledged) =>
+      canAcknowledgeEoaPayout(wallet, chain, id, "0xVault", payoutState, ack);
+    expect(canAck("0xbENEFICIARY", "0xf22f", "payment-1")).toBe(true);
+    expect(canAck("0xother", "0xf22f", "payment-1")).toBe(false);
+    expect(canAck("0xBeneficiary", "0x1", "payment-1")).toBe(false);
+    expect(canAck("0xBeneficiary", "0xf22f", "different-payment")).toBe(false);
+    expect(canAck("0xBeneficiary", "0xf22f", "payment-1", ["VERIFIED", ...payout.slice(1)])).toBe(false);
+    expect(canAck("0xBeneficiary", "0xf22f", "payment-1", payout, ["RECIPIENT_ACKNOWLEDGED", ...notAcknowledged.slice(1)])).toBe(false);
+    expect(canAck("0xBeneficiary", "0xf22f", "payment-1", ["PENDING", "IC", "0xBeneficiary", 25n])).toBe(false);
   });
 
   it("formats wei and transaction timestamps without floating point", () => {

@@ -184,7 +184,7 @@ class ReceiptArchive:
             return [dict(row) for row in db.execute("SELECT * FROM watches ORDER BY tx_id")]
 
     def append_receipt(self, tx_id: str, source: str, payload: Any) -> bool:
-        if source not in {"parent_receipt", "parent_lifecycle", "parent_messages", "child_receipt", "child_lifecycle", "contract_read", "balance_read"}:
+        if source not in {"parent_receipt", "parent_lifecycle", "parent_messages", "child_receipt", "child_lifecycle", "contract_read", "balance_read", "recipient_acknowledgment"}:
             raise ValueError("unsupported receipt source")
         serialized = _json(payload)
         digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()

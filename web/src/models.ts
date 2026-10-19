@@ -46,6 +46,63 @@ export function mapEoaSettlementState(contractState: string | null | undefined):
   return "UNVERIFIED";
 }
 
+export type RecipientAcknowledgment = {
+  status: string;
+  projectVault: string;
+  projectId: string;
+  paymentId: string;
+  beneficiary: string;
+  amountWei: string;
+  signer: string;
+  acknowledgedAt: string;
+};
+
+export function mapRecipientAcknowledgment(value: unknown): RecipientAcknowledgment {
+  if (!Array.isArray(value) || value.length < 8) {
+    return {
+      status: "UNKNOWN", projectVault: "", projectId: "", paymentId: "",
+      beneficiary: "", amountWei: "0", signer: "", acknowledgedAt: "0",
+    };
+  }
+  return {
+    status: String(value[0] ?? "UNKNOWN"),
+    projectVault: String(value[1] ?? ""),
+    projectId: String(value[2] ?? ""),
+    paymentId: String(value[3] ?? ""),
+    beneficiary: String(value[4] ?? ""),
+    amountWei: String(value[5] ?? "0"),
+    signer: String(value[6] ?? ""),
+    acknowledgedAt: String(value[7] ?? "0"),
+  };
+}
+
+export function canAcknowledgeEoaPayout(
+  wallet: string,
+  chainId: string,
+  paymentId: string,
+  vaultAddress: string,
+  payout: unknown,
+  acknowledgment: unknown,
+): boolean {
+  if (!wallet || !paymentId || !vaultAddress || chainId.toLowerCase() !== "0xf22f" || !Array.isArray(payout) || payout.length < 4) return false;
+  const payoutState = normalized(payout[0]);
+  if (normalized(payout[1]) !== "EOA" || !["PENDING", "VALUE_AT_RISK"].includes(payoutState)) return false;
+  const details = mapRecipientAcknowledgment(acknowledgment);
+  let amount: bigint;
+  try {
+    amount = BigInt(String(payout[3] ?? "0"));
+  } catch {
+    return false;
+  }
+  return wallet.toLowerCase() === String(payout[2]).toLowerCase()
+    && amount > 0n
+    && details.projectVault.toLowerCase() === vaultAddress.toLowerCase()
+    && details.paymentId === paymentId
+    && details.beneficiary.toLowerCase() === String(payout[2]).toLowerCase()
+    && details.amountWei === amount.toString()
+    && details.status === "NOT_ACKNOWLEDGED";
+}
+
 export function formatWei(value: unknown): string {
   let amount: bigint;
   try {

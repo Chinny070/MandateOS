@@ -81,6 +81,10 @@ class ProjectVault(gl.Contract):
     payout_destination: TreeMap[str, Address]
     payout_destination_mode: TreeMap[str, str]
     payout_queued_at: TreeMap[str, u256]
+    payout_acknowledgment_status: TreeMap[str, str]
+    payout_acknowledgment_signer: TreeMap[str, str]
+    payout_acknowledgment_amount: TreeMap[str, u256]
+    payout_acknowledgment_at: TreeMap[str, u256]
     payout_reserved_wei: u256
     unsettled_payout_count: u256
     revenue_reported_by_period: TreeMap[str, u256]
@@ -546,6 +550,45 @@ must return eligible=false. Source content JSON: {page}"""
         amount = self.payout_amount[payment_id]
         if self.agreement_model == "REPAYABLE":
             self.outstanding_principal_wei += amount
+
+    @gl.public.write
+    def acknowledge_eoa_payout_received(self, payment_id: str, amount_wei: u256) -> None:
+        """Record a beneficiary wallet's attestation without settling the payout."""
+        status = self.payout_status.get(payment_id, "")
+        if (not payment_id or status not in ("PENDING", "VALUE_AT_RISK")
+                or self.payout_destination_mode.get(payment_id, "") != "EOA"):
+            raise gl.vm.UserError("initiated EOA payout required")
+        beneficiary = self.payout_destination[payment_id]
+        if gl.message.sender_address != beneficiary:
+            raise gl.vm.UserError("configured EOA beneficiary required")
+        if amount_wei == u256(0) or amount_wei != self.payout_amount[payment_id]:
+            raise gl.vm.UserError("acknowledgment amount must match payout")
+        if self.payout_acknowledgment_status.get(payment_id, ""):
+            raise gl.vm.UserError("recipient acknowledgment already recorded")
+
+        self.payout_acknowledgment_status[payment_id] = "RECIPIENT_ACKNOWLEDGED"
+        self.payout_acknowledgment_signer[payment_id] = gl.message.sender_address.as_hex
+        self.payout_acknowledgment_amount[payment_id] = amount_wei
+        self.payout_acknowledgment_at[payment_id] = u256(int(datetime.now(timezone.utc).timestamp()))
+
+    @gl.public.view
+    def get_eoa_payout_acknowledgment(
+        self, payment_id: str
+    ) -> tuple[str, str, str, str, str, u256, str, u256]:
+        """Return beneficiary attestation separately from payment settlement status."""
+        contract_address = gl.message.contract_address.as_hex
+        if payment_id not in self.payout_status:
+            return ("UNKNOWN", contract_address, self.project_id, payment_id, "", u256(0), "", u256(0))
+        return (
+            self.payout_acknowledgment_status.get(payment_id, "NOT_ACKNOWLEDGED"),
+            contract_address,
+            self.project_id,
+            payment_id,
+            self.payout_destination[payment_id].as_hex,
+            self.payout_acknowledgment_amount.get(payment_id, self.payout_amount[payment_id]),
+            self.payout_acknowledgment_signer.get(payment_id, ""),
+            self.payout_acknowledgment_at.get(payment_id, u256(0)),
+        )
 
     @gl.public.write.payable
     def deposit_repayment(self, agreement_id: str, repayment_id: str) -> None:
