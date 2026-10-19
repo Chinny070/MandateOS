@@ -12,6 +12,8 @@ Keep these distinct: `main_contract_balance`, `unreserved_liquid_gen`, `pending_
 
 Pending commitments count against concentration even while GEN remains in the treasury. Moving GEN from treasury to vault must not increase total accounted GEN. Repaid GEN must not be double-counted as both principal outstanding and liquid balance. Revenue-only claims not yet paid must not be represented as cash or guaranteed income.
 
+Current implementation notes: MandateOS subtracts reserved allocations and unresolved outgoing transfer value from its current spendable balance, and keeps project commitments until a successful refund callback. Refund proposal amounts are reserved against both project commitments and the ProjectVault's currently available GEN. ProjectVault reserves each accepted refund intent against its balance until the authenticated parent callback confirms the reverse transfer. An uncertain outbound child is not resent automatically; unresolved value remains encumbered. This is deliberately conservative until independent receipt/balance reconciliation exists.
+
 ## Hard invariants
 
 1. No spend exceeds contract-controlled available GEN or its allocated limit.

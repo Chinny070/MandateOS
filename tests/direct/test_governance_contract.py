@@ -103,6 +103,205 @@ def test_invalid_mandates_and_funding_without_finalized_authorization_are_denied
         treasury.fund_project_vault("project", "forged-allocation", amount)
 
 
+def test_only_one_pending_vault_registration_can_claim_a_project(direct_vm, direct_deploy):
+    founder = direct_vm.sender
+    direct_vm.warp(BASE.isoformat())
+    treasury = direct_deploy("contracts/mandate_os.py")
+    with direct_vm.prank(founder):
+        treasury.propose_vault_registration(
+            "register-project", "project-race", _hex(create_address("vault-first")), 100,
+            "sha256:member-submitted",
+        )
+    with direct_vm.prank(founder), direct_vm.expect_revert("invalid or registered project"):
+        treasury.propose_vault_registration(
+            "register-project-race", "project-race", _hex(create_address("vault-second")), 200,
+            "sha256:other-submission",
+        )
+    assert treasury.pending_vault_registration["project-race"] == "register-project"
+    _warp(direct_vm, timedelta(days=1, seconds=1))
+    treasury.finalize_governance_proposal("register-project")
+    assert treasury.pending_vault_registration["project-race"] == ""
+    with direct_vm.prank(founder):
+        treasury.propose_vault_registration(
+            "retry-registration", "project-race", _hex(create_address("vault-retry")), 100,
+            "sha256:new-member-submission",
+        )
+
+
+def test_evidence_sources_reject_insecure_urls(direct_vm, direct_deploy):
+    founder = direct_vm.sender
+    direct_vm.warp(BASE.isoformat())
+    treasury = direct_deploy("contracts/mandate_os.py")
+    from genlayer.py.types import Address
+
+    treasury.vault_for_project["project-source"] = Address(
+        _hex(create_address("source-test-vault"))
+    )
+    for url in (
+        "http://example.gov/filing",
+        "https://127.0.0.1/private",
+        "https://user@example.gov/filing",
+        "https://metadata.internal/latest",
+    ):
+        with direct_vm.prank(founder), direct_vm.expect_revert(
+            "evidence source must be a bounded public HTTPS URL"
+        ):
+            treasury.propose_evidence_source(
+                "invalid-source", "project-source", url, "Project is in good standing"
+            )
+
+    with direct_vm.prank(founder), direct_vm.expect_revert(
+        "bounded DAO eligibility criteria are required"
+    ):
+        treasury.propose_evidence_source(
+            "invalid-criteria", "project-source", "https://example.gov/filing", ""
+        )
+    with direct_vm.prank(founder):
+        treasury.propose_evidence_source(
+            "approved-source-a", "project-source", "https://example.gov/filing",
+            "The filing identifies this registered project and confirms active status.",
+        )
+    with direct_vm.prank(founder), direct_vm.expect_revert(
+        "evidence source change is already pending"
+    ):
+        treasury.propose_evidence_source(
+            "approved-source-b", "project-source", "https://other.example.gov/filing",
+            "The filing identifies this registered project and confirms active status.",
+        )
+
+
+def test_challenge_expiry_releases_reservation_without_authorizing_funding(
+    direct_vm, direct_deploy
+):
+    direct_vm.warp(BASE.isoformat())
+    treasury = direct_deploy("contracts/mandate_os.py")
+    allocation_id = "dispute-timeout"
+    treasury.allocation_status[allocation_id] = "CHALLENGED"
+    treasury.allocation_project[allocation_id] = "project-timeout"
+    treasury.allocation_amount[allocation_id] = 40
+    treasury.allocation_dispute_ends_at[allocation_id] = int(
+        (BASE + timedelta(days=1)).timestamp()
+    )
+    treasury.reserved_allocation_wei = 40
+    treasury.committed_for_project["project-timeout"] = 40
+    treasury.allocation_resolution_id[allocation_id] = "pending-resolution"
+    treasury.proposal_status["pending-resolution"] = "TIMELOCKED"
+    treasury.proposal_target_id["pending-resolution"] = allocation_id
+
+    with direct_vm.expect_revert("allocation dispute deadline is active"):
+        treasury.expire_allocation_challenge(allocation_id)
+    _warp(direct_vm, timedelta(days=1, seconds=1))
+    treasury.expire_allocation_challenge(allocation_id)
+    assert treasury.get_allocation_status(allocation_id) == "EXPIRED"
+    assert treasury.get_proposal_status("pending-resolution") == "EXPIRED"
+    assert treasury.reserved_allocation_wei == 0
+    assert treasury.committed_for_project["project-timeout"] == 0
+    with direct_vm.expect_revert("allocation not authorized"):
+        treasury.fund_project_vault("project-timeout", allocation_id, 40)
+
+
+def test_expired_or_stale_authorization_cannot_fund_and_releases_reservation(
+    direct_vm, direct_deploy
+):
+    direct_vm.warp(BASE.isoformat())
+    treasury = direct_deploy("contracts/mandate_os.py")
+    expired = "expired-auth"
+    stale = "stale-auth"
+    for allocation_id, project_id in ((expired, "project-expired"), (stale, "project-stale")):
+        treasury.allocation_status[allocation_id] = "AUTHORIZED"
+        treasury.allocation_project[allocation_id] = project_id
+        treasury.allocation_amount[allocation_id] = 20
+        treasury.allocation_mandate_version[allocation_id] = 1
+        treasury.allocation_evidence_digest[allocation_id] = "sha256:approved-evidence"
+        treasury.reserved_allocation_wei += 20
+        treasury.committed_for_project[project_id] = 20
+    treasury.allocation_authorized_until[expired] = int((BASE - timedelta(seconds=1)).timestamp())
+    treasury.allocation_authorized_until[stale] = int((BASE + timedelta(days=1)).timestamp())
+    treasury.project_evidence_status["project-stale"] = "INCONCLUSIVE"
+
+    treasury.fund_project_vault("project-expired", expired, 20)
+    assert treasury.get_allocation_status(expired) == "EXPIRED"
+    treasury.fund_project_vault("project-stale", stale, 20)
+    assert treasury.get_allocation_status(stale) == "EXPIRED"
+    assert treasury.reserved_allocation_wei == 0
+    assert treasury.committed_for_project["project-expired"] == 0
+    assert treasury.committed_for_project["project-stale"] == 0
+
+    permissionless = "permissionless-expiry"
+    treasury.allocation_status[permissionless] = "AUTHORIZED"
+    treasury.allocation_project[permissionless] = "project-permissionless"
+    treasury.allocation_amount[permissionless] = 10
+    treasury.allocation_authorized_until[permissionless] = int(
+        (BASE - timedelta(seconds=1)).timestamp()
+    )
+    treasury.reserved_allocation_wei = 10
+    treasury.committed_for_project["project-permissionless"] = 10
+    treasury.expire_authorized_allocation(permissionless)
+    assert treasury.get_allocation_status(permissionless) == "EXPIRED"
+    assert treasury.reserved_allocation_wei == 0
+
+
+def test_refund_requires_governance_reserves_amount_and_reconciles_authenticated_value(
+    direct_vm, direct_deploy
+):
+    founder = direct_vm.sender
+    direct_vm.warp(BASE.isoformat())
+    treasury = direct_deploy("contracts/mandate_os.py")
+    from genlayer.py import calldata
+    from genlayer.py.public_abi import ResultCode
+    from genlayer.py.types import Address
+
+    vault_address = Address(_hex(create_address("governed-refund-vault")))
+    treasury.vault_for_project["project-refund"] = vault_address
+    treasury.committed_for_project["project-refund"] = 200
+    child_messages = []
+
+    def cross_contract_hook(vm, request):
+        if "CallContract" in request:
+            method = request["CallContract"]["calldata"]["method"]
+            if method == "get_refund_available_wei":
+                result = 100
+            elif method == "get_refund_status":
+                result = "CHILD_SUCCESS"
+            else:
+                raise AssertionError(f"unexpected refund vault view: {method}")
+            return bytes([int(ResultCode.RETURN)]) + calldata.encode(result)
+        if "PostMessage" in request:
+            child_messages.append(request["PostMessage"])
+            return {"ok": None}
+        return None
+
+    direct_vm._gl_call_hook = cross_contract_hook
+    with direct_vm.prank(founder):
+        treasury.propose_refund("refund-proposal", "project-refund", "refund-1", 70)
+    with direct_vm.prank(founder), direct_vm.expect_revert(
+        "refund exceeds unreserved vault balance"
+    ):
+        treasury.propose_refund("refund-proposal-2", "project-refund", "refund-2", 40)
+    _approve_and_execute(direct_vm, treasury, "refund-proposal", [founder])
+    assert treasury.get_refund_status("refund-1") == "PENDING"
+    assert treasury.pending_refund_for_project["project-refund"] == 70
+    assert child_messages[-1]["on"] == "finalized"
+
+    with direct_vm.prank(create_address("untrusted-refund-wallet")):
+        direct_vm.value = 70
+        with direct_vm.expect_revert("untrusted refund sender"):
+            treasury.receive_refund("refund-1", "project-refund")
+    with direct_vm.prank(vault_address):
+        direct_vm.value = 69
+        with direct_vm.expect_revert("refund amount mismatch"):
+            treasury.receive_refund("refund-1", "project-refund")
+        direct_vm.value = 70
+        treasury.receive_refund("refund-1", "project-refund")
+    assert treasury.committed_for_project["project-refund"] == 130
+    assert treasury.pending_refund_for_project["project-refund"] == 0
+    assert treasury.total_refunds_received_wei == 70
+    with direct_vm.prank(vault_address), direct_vm.expect_revert("refund already received"):
+        treasury.receive_refund("refund-1", "project-refund")
+    treasury.reconcile_refund("refund-1")
+    assert treasury.get_refund_status("refund-1") == "VERIFIED"
+
+
 def test_timelocked_mandate_proposal_expires_if_not_executed(direct_vm, direct_deploy):
     founder = direct_vm.sender
     bob = create_address("expired-mandate-voter")
@@ -227,11 +426,34 @@ def test_allocation_requires_two_member_final_vote_challenge_expiry_and_is_idemp
     )
     _approve_and_execute(direct_vm, treasury, "register-project-a", [founder, bob])
     assert treasury.get_vault_address("project-a") == vault_address
+    with direct_vm.prank(founder), direct_vm.expect_revert("invalid or registered project"):
+        treasury.propose_vault_registration(
+            "register-project-a-again", "project-a", vault_address, 1000,
+            "sha256:replacement-submission",
+        )
+    assert treasury.project_evidence_status["project-a"] == "UNASSESSED"
+    assert treasury.get_project_submitted_evidence_digest("project-a") == (
+        "sha256:member-reviewed-project-evidence"
+    )
+    assert treasury.project_evidence_digest["project-a"] == ""
+    with direct_vm.prank(founder):
+        treasury.propose_allocation("member-digest-only", "project-a", 20)
+    with direct_vm.expect_revert("project eligibility is not validator-verified"):
+        treasury.evaluate_allocation("member-digest-only")
+
+    # Test-only deterministic assessment state lets the rest of this Direct
+    # Mode case exercise funding authorization. Native web consensus is tested
+    # only by the GenLayer validator runtime, never by this fixture.
+    assessment_time = int((BASE + timedelta(days=2, seconds=1)).timestamp())
+    treasury.project_evidence_status["project-a"] = "VERIFIED_ELIGIBLE"
+    treasury.project_evidence_digest["project-a"] = "sha256:direct-mode-fixture"
+    treasury.project_evidence_assessed_at["project-a"] = assessment_time
+    treasury.project_evidence_expires_at["project-a"] = assessment_time + 604800
+    treasury.project_evidence_mandate_version["project-a"] = treasury.mandate_version
 
     # Explicitly model the balance held for an unresolved child transfer. This
     # checks reservations only; it is not a receipt or settlement proof.
-    assessed_at = treasury.project_evidence_assessed_at["project-a"]
-    direct_vm.warp(datetime.fromtimestamp(int(assessed_at), timezone.utc).isoformat())
+    direct_vm.warp(datetime.fromtimestamp(assessment_time, timezone.utc).isoformat())
     treasury.pending_transfer_wei = 800
     with direct_vm.prank(founder):
         treasury.propose_allocation("reserve-breach", "project-a", 100)

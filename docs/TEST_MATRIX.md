@@ -17,12 +17,13 @@
 
 ## Gate 2: Governance and risk
 
-- Direct Mode contract tests cover: member registration; membership snapshots and ineligible/duplicate/late votes; quorum and approval rejection; voting and execution deadlines; mandate bounds and version expiry; governance-gated vault registration; proposal/evaluate/authorize/challenge/resolve/cancel/expire lifecycle; concentration, liquid reserve and pending-transfer reservations; permissionless submission only for an exact authorized allocation; replayed funding denial.
+- Direct Mode contract tests cover: member registration/snapshot manipulation; duplicate/ineligible/late votes; quorum and approval rejection; voting and execution deadlines; mandate bounds/version expiry; concurrent and replayed vault registration; governance-gated HTTPS evidence sources and criteria; member digest cannot authorize; challenge expiry; expired/stale funding authorization; concentration, liquid reserve and pending-transfer reservations; permissionless execution only for an exact authorized allocation; governed refund reservations, caller/value authentication, replay denial and reconciliation; vault-side simultaneous refund reservation.
 - Both actual MandateOS contract entry points and state transitions are exercised. Deterministic clock and balance are Direct Mode fixtures. Cross-contract identity views and child-transaction enqueueing are stubbed; there is no child execution or settlement proof.
-- Remaining Gate 2 checks: native validator-backed evidence, historical mandate inspection, member removal/delegation policy, independently verified full async child failure/recovery, governed repayment/refund lifecycle and live consensus.
+- Remaining Gate 2 checks: native validator-backed evidence in a live GenLayer runtime, member removal/delegation policy, independently verified async child failure/recovery, and live consensus.
 
 ## Gate 3: Evidence + clock + consensus
 
+- Contract implementation now performs an independently re-fetched comparative eligibility assessment and persists a SHA-256 receipt, provenance URL/host, claimed publication date, assessment timestamp, expiry, mandate version, result and incrementing receipt version. Direct Mode cannot execute Equivalence Principle blocks; no validator verdict is claimed.
 - Live `.get()` and `.render()` on authenticated allowed domains; screenshot mode live where runtime supports it.
 - Real network validator-backed nondeterministic decision; evidence hashes and publication/transaction timestamps; different-validator disagreement; stale and contradictory evidence; malicious prompt injection fail closed.
 

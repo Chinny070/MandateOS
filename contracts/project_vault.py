@@ -13,6 +13,7 @@ class ProjectVault(gl.Contract):
     project_id: str
     total_received_wei: u256
     total_refund_scheduled_wei: u256
+    refund_reserved_wei: u256
     allocations: TreeMap[str, u256]
     refund_status: TreeMap[str, str]
     refund_amount: TreeMap[str, u256]
@@ -24,6 +25,7 @@ class ProjectVault(gl.Contract):
         self.project_id = project_id
         self.total_received_wei = u256(0)
         self.total_refund_scheduled_wei = u256(0)
+        self.refund_reserved_wei = u256(0)
 
     def _require_parent(self) -> None:
         if gl.message.sender_address != self.mandate_os:
@@ -51,12 +53,14 @@ class ProjectVault(gl.Contract):
             raise gl.vm.UserError("refund id invalid or used")
         if amount_wei == u256(0):
             raise gl.vm.UserError("zero refund")
-        if amount_wei > self.balance:
+        available = self.get_refund_available_wei()
+        if amount_wei > available:
             raise gl.vm.UserError("insufficient vault balance")
         # No automatic retries: if the child fails, funds may not return.
         self.refund_status[refund_id] = "SCHEDULED"
         self.refund_amount[refund_id] = amount_wei
         self.total_refund_scheduled_wei += amount_wei
+        self.refund_reserved_wei += amount_wei
         parent = gl.get_contract_at(self.mandate_os)
         parent.emit(value=amount_wei, on="finalized").receive_refund(refund_id, self.project_id)
 
@@ -70,7 +74,10 @@ class ProjectVault(gl.Contract):
             raise gl.vm.UserError("refund is not awaiting confirmation")
         if amount_wei != self.refund_amount[refund_id]:
             raise gl.vm.UserError("refund amount mismatch")
+        if amount_wei > self.refund_reserved_wei:
+            raise gl.vm.UserError("refund reservation accounting mismatch")
         self.refund_status[refund_id] = "CHILD_SUCCESS"
+        self.refund_reserved_wei -= amount_wei
 
     @gl.public.view
     def get_parent_address(self) -> str:
@@ -87,6 +94,12 @@ class ProjectVault(gl.Contract):
     @gl.public.view
     def get_balance_wei(self) -> u256:
         return self.balance
+
+    @gl.public.view
+    def get_refund_available_wei(self) -> u256:
+        if self.refund_reserved_wei >= self.balance:
+            return u256(0)
+        return self.balance - self.refund_reserved_wei
 
     @gl.public.view
     def get_refund_status(self, refund_id: str) -> str:

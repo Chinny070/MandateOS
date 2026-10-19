@@ -30,6 +30,8 @@ def test_treasury_admin_and_funding_guards(direct_vm, direct_deploy):
         treasury.register_vault("project", "0x" + "11" * 20, 100)
     with direct_vm.expect_revert("allocation not authorized"):
         treasury.fund_project_vault("missing", "allocation-1", 1)
+    with direct_vm.expect_revert("refund requires finalized governance proposal"):
+        treasury.request_refund("project", "legacy-refund", 1)
 
 
 def test_vault_rejects_wrong_parent_and_duplicate_or_wrong_project(direct_vm, direct_deploy):
@@ -120,6 +122,7 @@ def test_vault_refund_success_callback_requires_parent_and_exact_value(direct_vm
     vault = direct_deploy("contracts/project_vault.py", _hex(parent), "project-a")
     vault.refund_status["refund-a"] = "SCHEDULED"
     vault.refund_amount["refund-a"] = 9
+    vault.refund_reserved_wei = 9
 
     with direct_vm.prank(create_address("untrusted-refund-callback")), direct_vm.expect_revert("MandateOS parent required"):
         vault.record_refund_child_success("refund-a", "project-a", 9)
@@ -128,3 +131,20 @@ def test_vault_refund_success_callback_requires_parent_and_exact_value(direct_vm
     with direct_vm.prank(parent):
         vault.record_refund_child_success("refund-a", "project-a", 9)
     assert vault.get_refund_status("refund-a") == "CHILD_SUCCESS"
+    assert vault.refund_reserved_wei == 0
+    with direct_vm.prank(parent), direct_vm.expect_revert("refund is not awaiting confirmation"):
+        vault.record_refund_child_success("refund-a", "project-a", 9)
+
+
+def test_vault_refund_reservation_prevents_simultaneous_overcommit(direct_vm, direct_deploy):
+    parent = create_address("refund-reservation-parent")
+    direct_vm.sender = create_address("refund-reservation-deployer")
+    direct_vm.value = 0
+    vault = direct_deploy("contracts/project_vault.py", _hex(parent), "project-a")
+    direct_vm.deal(bytes(direct_vm._contract_address), 100)
+    vault.refund_reserved_wei = 70
+
+    with direct_vm.prank(parent), direct_vm.expect_revert("insufficient vault balance"):
+        vault.initiate_refund("refund-overcommit", 40)
+    assert vault.get_refund_status("refund-overcommit") == "UNKNOWN"
+    assert vault.refund_reserved_wei == 70
