@@ -28,10 +28,10 @@ The linter must run with UTF-8 output on this Windows host (`$env:PYTHONIOENCODI
 
 ## Delivery blockers
 
-- The current development branch is `codex/onchain-governance`; implementation commit `d3d4b080abae4e8327e17203c3893f0f8574a330` contains the tested changes. GitHub push verification is pending. `main` remains at baseline `4b446f04bb811c985230dee55b904e73412438b1`.
+- The current development branch is `codex/onchain-governance`; tested implementation commit `d3d4b080abae4e8327e17203c3893f0f8574a330` is pushed. GitHub reported branch HEAD `7e4fb129995faf725cf82e06108be3c45f68784a` at verification time; `main` remains at `4b446f04bb811c985230dee55b904e73412438b1`.
 - No StudioNet wallet/faucet funding is available in this environment. No deployment, GEN movement, real transaction receipt, or balance claim is made.
 - `CODEX_MASTER_PROMPT.md` describes desired follow-on product behavior. It does not make administrator-only lab transfer methods production authorization.
 
 ## Local milestone
 
-- Verified implementation commit: `d3d4b080abae4e8327e17203c3893f0f8574a330` (`Harden governance evidence and refund lifecycle`). Documentation commit and remote branch HEAD will be recorded after push verification.
+- Verified implementation commit: `d3d4b080abae4e8327e17203c3893f0f8574a330` (`Harden governance evidence and refund lifecycle`); pushed to `origin/codex/onchain-governance`. The status-only follow-up at verification was `7e4fb129995faf725cf82e06108be3c45f68784a`.
