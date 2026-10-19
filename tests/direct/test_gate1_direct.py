@@ -143,6 +143,9 @@ def test_vault_refund_reservation_prevents_simultaneous_overcommit(direct_vm, di
     vault = direct_deploy("contracts/project_vault.py", _hex(parent), "project-a")
     direct_vm.deal(bytes(direct_vm._contract_address), 100)
     vault.refund_reserved_wei = 70
+    # The pending child value has already left the balance; its reservation is
+    # an audit state and must not be subtracted a second time.
+    direct_vm.deal(bytes(direct_vm._contract_address), 30)
 
     with direct_vm.prank(parent), direct_vm.expect_revert("insufficient vault balance"):
         vault.initiate_refund("refund-overcommit", 40)

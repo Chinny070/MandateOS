@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 
 import pytest
 
@@ -13,6 +14,150 @@ def _hex(address: bytes) -> str:
 
 BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
 pytestmark = pytest.mark.direct
+
+
+def test_comparator_receipt_parser_fails_closed_on_bad_schema_digest_or_status(
+    direct_vm, direct_deploy
+):
+    treasury = direct_deploy("contracts/mandate_os.py")
+    good = {
+        "status": "ELIGIBLE",
+        "publication": "2026-01-01",
+        "reason": "filing_matches",
+        "facts": "The named project appears in the filing.",
+        "digest": "a" * 64,
+    }
+    assert treasury._validate_evidence_assessment(json.dumps(good)) == (
+        "VERIFIED_ELIGIBLE", "a" * 64, "2026-01-01", "filing_matches",
+        "The named project appears in the filing.",
+    )
+    for field, value, error in (
+        ("digest", "", "validator evidence digest is invalid"),
+        ("digest", "g" * 64, "validator evidence digest is invalid"),
+        ("status", "APPROVED", "validator assessment status is invalid"),
+        ("facts", 1, "validator assessment fields are invalid"),
+        ("publication", "2026-99-99", "validator publication field is invalid"),
+    ):
+        malformed = dict(good)
+        malformed[field] = value
+        with direct_vm.expect_revert(error):
+            treasury._validate_evidence_assessment(json.dumps(malformed))
+    extra = dict(good)
+    extra["source"] = "member-provided"
+    with direct_vm.expect_revert("validator assessment schema is invalid"):
+        treasury._validate_evidence_assessment(json.dumps(extra))
+
+
+def test_vault_agreement_and_milestone_setup_require_governance_and_reconciliation(
+    direct_vm, direct_deploy
+):
+    founder = direct_vm.sender
+    direct_vm.warp(BASE.isoformat())
+    treasury = direct_deploy("contracts/mandate_os.py")
+    bob = create_address("financing-governance-member")
+    _add_second_member(direct_vm, treasury, founder, bob)
+    from genlayer.py import calldata
+    from genlayer.py.public_abi import ResultCode
+    from genlayer.py.types import Address
+
+    vault_address = Address(_hex(create_address("financing-governed-vault")))
+    operator = Address(_hex(create_address("financing-governed-operator")))
+    beneficiary = Address(_hex(create_address("financing-governed-beneficiary")))
+    treasury.vault_for_project["project-finance"] = vault_address
+    treasury.allocation_project["allocation-finance"] = "project-finance"
+    treasury.allocation_amount["allocation-finance"] = 100
+    treasury.allocation_status["allocation-finance"] = "VERIFIED"
+    treasury.allocation_mandate_version["allocation-finance"] = 1
+    treasury.funding_amount["allocation-finance"] = 100
+    outbound = []
+    milestone_state = {"status": "CHALLENGEABLE"}
+    default_state = {"status": "CHALLENGED"}
+
+    def hook(vm, request):
+        if "CallContract" in request:
+            method = request["CallContract"]["calldata"]["method"]
+            if method == "get_project_payment_protocol_version":
+                result = 1
+            elif method == "get_agreement_summary":
+                result = (
+                    "agreement-finance", "allocation-finance", "REPAYABLE", 1, 80,
+                    int((BASE + timedelta(days=30)).timestamp()), 86400, 1, 0,
+                    86400, 604800, 0, 0, 0, 0, 0, "ACTIVE", operator.as_hex,
+                    beneficiary.as_hex,
+                )
+            elif method == "get_milestone_summary":
+                result = ("DEFINED", 40, "Verified work completion")
+            elif method == "get_milestone_status":
+                result = milestone_state["status"]
+            elif method == "get_milestone_dispute_ends_at":
+                result = int((BASE + timedelta(days=20)).timestamp())
+            elif method == "get_default_status":
+                result = default_state["status"]
+            elif method == "get_default_challenge_ends_at":
+                result = int((BASE + timedelta(days=20)).timestamp())
+            else:
+                raise AssertionError(f"unexpected project-vault view: {method}")
+            return bytes([int(ResultCode.RETURN)]) + calldata.encode(result)
+        if "PostMessage" in request:
+            outbound.append(request["PostMessage"])
+            return {"ok": None}
+        return None
+
+    direct_vm._gl_call_hook = hook
+    with direct_vm.prank(founder):
+        treasury.propose_project_agreement(
+            "agreement-vote", "project-finance", "agreement-finance",
+            "allocation-finance", operator.as_hex, beneficiary.as_hex, "REPAYABLE",
+            80, int((BASE + timedelta(days=30)).timestamp()), 86400, 1, 0, 0,
+        )
+    with direct_vm.prank(founder), direct_vm.expect_revert(
+        "project already has an agreement proposal"
+    ):
+        treasury.propose_project_agreement(
+            "agreement-vote-duplicate", "project-finance", "agreement-other",
+            "allocation-finance", operator.as_hex, beneficiary.as_hex, "REPAYABLE",
+            80, int((BASE + timedelta(days=30)).timestamp()), 86400, 1, 0, 0,
+        )
+    _approve_and_execute(direct_vm, treasury, "agreement-vote", [founder, bob])
+    assert treasury.project_agreement_status["project-finance"] == "PENDING"
+    assert outbound[-1]["on"] == "finalized"
+    treasury.reconcile_project_agreement("project-finance")
+    assert treasury.project_agreement_status["project-finance"] == "VERIFIED"
+
+    with direct_vm.prank(founder):
+        treasury.propose_vault_milestone(
+            "milestone-vote", "project-finance", "construction", 40,
+            "Verified work completion",
+        )
+    _approve_and_execute(direct_vm, treasury, "milestone-vote", [founder, bob])
+    assert treasury.project_milestone_status["project-finance|construction"] == "PENDING"
+    treasury.reconcile_vault_milestone("project-finance", "construction")
+    assert treasury.project_milestone_status["project-finance|construction"] == "VERIFIED"
+
+    with direct_vm.prank(founder):
+        treasury.challenge_vault_milestone(
+            "project-finance", "construction", "sha256:member-challenge"
+        )
+    assert outbound[-1]["on"] == "finalized"
+    milestone_state["status"] = "CHALLENGED"
+    with direct_vm.prank(founder):
+        treasury.propose_milestone_resolution(
+            "resolve-milestone", "project-finance", "construction", False
+        )
+    _approve_and_execute(direct_vm, treasury, "resolve-milestone", [founder, bob])
+    assert treasury.get_proposal_status("resolve-milestone") == "EXECUTED"
+    assert treasury.pending_milestone_resolution.get(
+        "project-finance|construction", ""
+    ) == ""
+
+    with direct_vm.prank(founder):
+        treasury.propose_default_resolution(
+            "resolve-default", "project-finance", False
+        )
+    _approve_and_execute(direct_vm, treasury, "resolve-default", [founder, bob])
+    assert treasury.get_proposal_status("resolve-default") == "EXECUTED"
+    assert treasury.pending_project_default_resolution.get("project-finance", "") == ""
+    assert outbound[-1]["on"] == "finalized"
 
 
 def _warp(vm, delta: timedelta) -> None:
@@ -261,6 +406,8 @@ def test_refund_requires_governance_reserves_amount_and_reconciles_authenticated
             method = request["CallContract"]["calldata"]["method"]
             if method == "get_refund_available_wei":
                 result = 100
+            elif method == "get_refund_reserved_wei":
+                result = 0
             elif method == "get_refund_status":
                 result = "CHILD_SUCCESS"
             else:
@@ -452,15 +599,18 @@ def test_allocation_requires_two_member_final_vote_challenge_expiry_and_is_idemp
     treasury.project_evidence_mandate_version["project-a"] = treasury.mandate_version
 
     # Explicitly model the balance held for an unresolved child transfer. This
-    # checks reservations only; it is not a receipt or settlement proof.
+    # models the value already removed from cash by the emitted child; it is
+    # not a receipt or settlement proof.
     direct_vm.warp(datetime.fromtimestamp(assessment_time, timezone.utc).isoformat())
     treasury.pending_transfer_wei = 800
+    direct_vm.deal(treasury_address, 200)
     with direct_vm.prank(founder):
         treasury.propose_allocation("reserve-breach", "project-a", 100)
     with direct_vm.expect_revert("mandate liquid reserve would be breached"):
         treasury.evaluate_allocation("reserve-breach")
     assert treasury.reserved_allocation_wei == 0
     treasury.pending_transfer_wei = 0
+    direct_vm.deal(treasury_address, 1000)
 
     with direct_vm.prank(founder):
         treasury.propose_allocation("no-quorum-allocation", "project-a", 50)
@@ -498,12 +648,14 @@ def test_allocation_requires_two_member_final_vote_challenge_expiry_and_is_idemp
     assert treasury.reserved_allocation_wei == 100
     assert treasury.get_spendable_balance_wei() == 900
     treasury.pending_transfer_wei = 850
+    direct_vm.deal(treasury_address, 150)
     with direct_vm.prank(bob):
         treasury.propose_allocation("cross-allocation-overcommit", "project-a", 60)
     with direct_vm.expect_revert("insufficient unreserved treasury GEN"):
         treasury.evaluate_allocation("cross-allocation-overcommit")
     assert treasury.reserved_allocation_wei == 100
     treasury.pending_transfer_wei = 0
+    direct_vm.deal(treasury_address, 1000)
     with direct_vm.prank(bob):
         treasury.propose_allocation("over-concentration", "project-a", 101)
     with direct_vm.prank(bob), direct_vm.expect_revert("mandate project concentration exceeded"):
