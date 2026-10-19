@@ -1,20 +1,22 @@
 # Live StudioNet proofs
 
-**No live contract deployment or GEN settlement is claimed.** Local Direct Mode, tests, keeper fixtures, and imported keeper JSON reports are not StudioNet proof.
+**No contract deployment or GEN settlement is claimed.** Local Direct Mode, test fixtures, keeper archives and imported dashboard reports are not live StudioNet proof.
 
 | Proof item | Result | Evidence |
 |---|---|---|
-| StudioNet endpoint and chain identity | READ-ONLY VERIFIED | On 2026-10-19, an authorized read-only JSON-RPC `eth_chainId` request to `https://studio.genlayer.com/api` returned HTTP 200 with `0xf22f` (61999). No RPC errors occurred. No state-changing call was sent. |
-| Installed GenLayerPY connectivity | READ-ONLY VERIFIED | `genlayer-py==0.16.3`, configured with its StudioNet preset, read `client.w3.eth.chain_id` as `0xf22f` (61999). This confirms RPC connectivity only; no deployed contracts or transaction IDs were available for transaction-method inspection against live state. |
-| Parent Intelligent Contract transactions | NONE | No MandateOS or ProjectVault address is deployed in this environment, so no real contract transaction can be queried. |
-| EOA external GEN payment relationship | NOT AVAILABLE FROM SUPPORTED SDK RECEIPT API | GenLayerJS `getTriggeredTransactionIds` and GenLayerPY `get_triggered_transaction_ids` derive IDs from `InternalMessageProcessed` events. They establish internal IC child IDs. They do not expose a child receipt identifier for the EOA external value transfer. Matching value, address, balance delta, or nearby timestamp is not treated as causal proof. |
-| EOA beneficiary settlement | UNVERIFIED / NOT EXECUTED | No EOA transfer was made. Dashboard and keeper cannot promote an EOA payment to verified or retry an uncertain payment. |
-| MandateOS deployment | NOT DEPLOYED | No contract address, code hash, constructor arguments, or deployment transaction. |
-| ProjectVault deployment | NOT DEPLOYED | No contract address, code hash, constructor arguments, or deployment transaction. |
-| GEN deposit, refund, repayment, payout or distribution | NOT EXECUTED | No transfer transaction IDs, finalization results, child execution results, or before/after balances exist. |
-| Native validator evidence evaluation | NOT EXECUTED | No validator-backed evidence receipt or consensus result exists. |
-| Keeper | LOCAL IMPLEMENTATION; NO LIVE WATCHES | Keeper tests use deterministic reader fixtures. No deployed MandateOS transactions were supplied to its watchlist. Its SDK links are recorded as internal-message children only. |
-| Dashboard | LOCAL BUILD; NO LIVE CONTRACT DATA | React/TypeScript/Vite build and state-mapping tests pass. No contract address is configured by default and no live contract data was queried. A user must enter a known address and identifier to request latest-final reads. |
-| GitHub development branch | PUSH VERIFIED | Commit `c830960558e635b24a48dbd030d33cc172eff5cc` was pushed fast-forward from `d73bbc78f00b09236e7a0016d8036c9247bbf75c` to `codex/onchain-governance` and independently checked through GitHub. Remote `main` remains `4b446f04bb811c985230dee55b904e73412438b1`. |
+| StudioNet endpoint and chain identity | READ-ONLY VERIFIED | On 2026-10-19, raw JSON-RPC `eth_chainId` to `https://studio.genlayer.com/api` returned HTTP 200 and `0xf22f` (61999). No state-changing call was sent. |
+| Installed GenLayerPY connectivity | READ-ONLY VERIFIED | `genlayer-py==0.16.3`, StudioNet preset, read `client.w3.eth.chain_id` as `0xf22f` (61999). This proves RPC read connectivity, not SDK deployment or transaction submission. |
+| GenLayer deployment SDK/CLI transaction path | NOT VERIFIED | No deployment or write call was submitted. Raw RPC or Python chain-ID success does not prove deployment, finality, or child handling. |
+| MandateOS Core | NOT DEPLOYED | No contract address, constructor record, code hash or deployment transaction exists. |
+| ProjectVault | NOT DEPLOYED | No contract address, constructor record, code hash or deployment transaction exists. |
+| Deposits, funding, payouts, refunds, repayments or distributions | NOT EXECUTED | No live transaction hashes, child results, finalization status, or before/after contract balances exist. |
+| Native validator evidence | NOT EXECUTED | No validator-backed receipt or consensus result exists. |
+| EOA payment relationship | UNAVAILABLE FROM SUPPORTED RECEIPT API | GenLayerJS `getTriggeredTransactionIds` and GenLayerPY `get_triggered_transaction_ids` expose `InternalMessageProcessed` internal IC children. They do not expose a causally linked external EOA transfer receipt. Equal amounts, addresses, balances or timestamps are not treated as causal proof. |
+| EOA beneficiary settlement | UNVERIFIED / NOT EXECUTED | No EOA payment was sent. Contract, dashboard and keeper cannot mark it successful or retry an uncertain transfer. EOA payout is not production-usable until independent linkage is supported. |
+| Keeper | LOCAL ONLY | Durable read-only archive and deterministic adapter tests exist. No live transaction was watched; reports are not signed settlement receipts. |
+| Dashboard | LOCAL ONLY | Contract-backed indexes, latest-final read paths, wallet-signed governance/milestone actions and transaction inspection build locally. There is no deployed contract address configured, so no live dashboard contract reads were made. |
+| Local verification | PASSED | Implementation commit `61df489fac4ec6f39062d07592337c4f6d431a92`: 109 Python tests, 4 frontend tests, Python compilation, two GenVM lint runs, TypeScript typecheck and Vite build. These are not StudioNet transactions. |
+| GitHub development branch | IMPLEMENTATION COMMIT READY | `61df489fac4ec6f39062d07592337c4f6d431a92` is the implementation/source commit. The accompanying build/proof document update is a separate follow-up commit; branch push and final remote HEAD must be verified after publication. |
+| GitHub `main` | UNCHANGED | Last independently checked main head: `4b446f04bb811c985230dee55b904e73412438b1`. No merge was made. |
 
-The keeper has no signing key and does not submit transactions. Its SQLite archive and JSON reports are local operational records, not cryptographically signed receipts. Keep EOA payouts UNKNOWN until a supported source independently establishes the full parent intent → external transfer → recipient/amount → successful execution relationship.
+The read-only StudioNet check is network identity evidence only. Deployment and every GEN transfer remain unperformed and require explicit approval. For release blockers and the conditional deployment sequence, see [docs/DEPLOYMENT_READINESS.md](docs/DEPLOYMENT_READINESS.md).
