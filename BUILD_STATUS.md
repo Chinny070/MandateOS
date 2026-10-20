@@ -3,7 +3,7 @@
 - **Branch:** `codex/onchain-governance`
 - **Deployment source commit:** `b7bb8bc252cc4528bf67c3ac04c4dfbafcb9684f`
 - **Deployment status:** Core and one ProjectVault are deployed and finalized on StudioNet.
-- **Scope:** deployment only; no treasury funding, governance transaction, investment, payout, refund, repayment, or test GEN transfer.
+- **Verified live scope:** Core and ProjectVault deployment, one separately authorized MEMBER_ADD proposal, and one separately authorized founder YES vote. No investment, payout, refund, repayment, or test GEN transfer.
 - **Production verdict:** **NO-GO**. Deployment does not establish financial-cycle, governance, evidence, settlement, or production readiness.
 
 ## Deployed contracts
@@ -33,7 +33,7 @@ See [LIVE_PROOFS.md](LIVE_PROOFS.md) and the deployment journal for transaction 
 
 ## Remaining blockers and next actions
 
-1. The supplied Rabby address `0x1Af111b06E6f6A05Bd41572A016318f1356aF85c` is not yet a DAO member. The deploying founder must later submit `propose_member_add`, vote, wait through the voting period, finalize, wait the execution timelock, and execute. The Rabby owner must approve their own wallet transaction. No governance write was included in deployment authorization.
+1. The Rabby MEMBER_ADD proposal is in `VOTING` with one founder YES vote. Wait for its actual onchain deadline, then separately authorize finalization, wait the execution timelock, and separately authorize execution. Rabby currently has weight `0`.
 2. Core currently has no registered vault. Register it through finalized governance before financing.
 3. Two-wallet governance, treasury deposits/funding, evidence evaluation, IC-recipient payout, repayments, refunds and keeper reconciliation still need controlled live testing and separate approvals.
 4. EOA payouts remain unverified and must not be used for production settlement. No automatic retry or reservation release is allowed for uncertain transfers.
@@ -46,7 +46,17 @@ The first financial test remains capped at `0.01 GEN` and requires its own expli
 - **Onchain preflight:** read-only latest-final queries on StudioNet returned proposal count `0`, candidate `member-add-rabby-1af111b06e6f6a05-20261020-01` unused/status `UNKNOWN`, founder weight `1`, Rabby weight `0`; latest EVM block timestamp `1792455328` (`2026-10-20T00:15:28Z`).
 - **Governance settings from deployed source:** quorum/approval `6666` bps, voting `86400` seconds, execution delay `86400` seconds, execution window `604800` seconds. Deployed source hash matches the recorded source; these values have no public getter or setter.
 - **Exact read-only member-add fee quote:** at `2026-10-20T00:15:28.923Z`, GenLayerJS `1.1.8`, exact `propose_member_add` calldata, gas estimate/limit `500000`, current `eth_gasPrice=0 wei`, maximum EVM fee commitment `0 GEN`, attached value `0`. A fake provider stopped before wallet/broadcast. The quote is time-sensitive and the signer route rechecks it before signing.
-- **Preparation code:** dashboard now pins stable `genlayer-js@1.1.8`; its provider guard fails closed on RPC/estimate errors and checks account, chain, destination, fee quote and zero transfer value before opening a wallet popup. Read-only planner: `scripts/membership-onboarding-status.mjs`. One-step resumable CLI signer workflow: `scripts/member-onboarding-cli.cjs`; deployment runner dispatch is gated by an explicit separate membership approval token. No wallet was unlocked and no governance write was attempted.
+- **Preparation and live update:** dashboard pins stable `genlayer-js@1.1.8`; its provider guard fails closed on RPC/estimate errors and checks account, chain, destination, fee quote and zero transfer value before opening a wallet popup. Read-only planner: `scripts/membership-onboarding-status.mjs`. One-step resumable CLI signer workflow: `scripts/member-onboarding-cli.cjs`; deployment runner dispatch is gated by an explicit per-step membership approval token. The live proposal and vote are documented below; this preparation history records that no wallet was unlocked or governance write attempted at that earlier point.
 - **Subsequent vault registration:** target vault and project are fixed, but `cap_wei` and a supported evidence digest are not supplied. Two active members are not enough by themselves: the two-member snapshot requires both distinct members to vote YES to reach quorum and approval.
 - **Verification on this preparation worktree:** `python -m compileall -q contracts reference keeper tests` — passed; `python -m pytest -q` — **116 passed**; `python -m pytest tests/direct -q` — **39 passed**; both `genvm-lint check` commands — passed (3 checks each); dashboard `npm test` — **15 passed**, `npm run typecheck` — passed, `npm run build` — passed (Vite large-chunk advisory); CLI/deployment/membership Node tests — **18 passed**; onboarding scripts `node --check` — passed. Linter latest-version lookup still emits a blocked `WinError 10013` warning but uses cached GenVM and completes both lint validations.
 - `git diff --check` — passed. `npm install` audit reported **0 vulnerabilities**. No contract sources or deployed bytecode were modified. Local tests do not establish a live Rabby signature or validator-backed governance.
+
+## Live MEMBER_ADD proposal and founder vote — 2026-10-20
+
+- **Network/Core:** StudioNet chain `61999`; Core `0x32698630D6144882Bd0c1D5B00C74348c53ea58B`.
+- **Proposal:** `member-add-rabby-1af111b06e6f6a05-20261020-01` for Rabby `0x1Af111b06E6f6A05Bd41572A016318f1356aF85c`.
+- **Proposal transaction:** `0xc1e14ac8f3019cb5996b03f1d4e443b787c2f69cf4f7ecb0c473f3c3907b4264`; `FINALIZED / MAJORITY_AGREE / leader SUCCESS`; EVM status `0x1`; actual fee `0 GEN`.
+- **Founder YES transaction:** `0x623fcedd7df12e20710e5857760d8b07d995fa527ad16bd7689b0a20efe85558`; `FINALIZED / MAJORITY_AGREE / leader SUCCESS`; EVM status `0x1`, gas used `0x7a1200`, effective gas price `0x0`, actual fee `0 GEN`.
+- **Latest-final state:** proposal `VOTING`; votes for `1`, against `0`; snapshot weight `1`; voting deadline `1792562587`; latest chain timestamp `1792478535`; founder weight `1`; Rabby weight `0` until proposal execution.
+- **Budget:** actual fees `0`, committed fees `0`, unknown fee liabilities `0`, remaining cumulative ceiling `10 GEN`; no test value transferred.
+- **Next step:** wait until the latest chain timestamp reaches the onchain voting deadline. Finalization and execution require their own explicit authorization. No other governance or financial transaction was submitted.

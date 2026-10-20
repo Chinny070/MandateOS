@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "PREPARED_NOT_AUTHORIZED",
+  "status": "STEP_FINALIZED",
   "network": "StudioNet",
   "chain_id": 61999,
   "core_address": "0x32698630D6144882Bd0c1D5B00C74348c53ea58B",
@@ -8,10 +8,60 @@
   "proposal_id": "member-add-rabby-1af111b06e6f6a05-20261020-01",
   "founder": "0xaffe15eec45b68835cc9e5b4ab85dd5deae8e70b",
   "member": "0x1Af111b06E6f6A05Bd41572A016318f1356aF85c",
-  "transactions": [],
+  "transactions": [
+    {
+      "stage": "PROPOSE_MEMBER_ADD",
+      "status": "FINALIZED",
+      "prepared_at": "2026-10-20T06:03:05.624Z",
+      "user_fee_cap_wei": "0",
+      "signed_gas_limit": "500000",
+      "signed_gas_price_wei": "0",
+      "signed_fee_cap_wei": "0",
+      "transaction_id": "0xc1e14ac8f3019cb5996b03f1d4e443b787c2f69cf4f7ecb0c473f3c3907b4264",
+      "submitted_at": "2026-10-20T06:03:07.507Z",
+      "final_status": "FINALIZED",
+      "result_name": "MAJORITY_AGREE",
+      "transaction_execution": "SUCCESS",
+      "evm_receipt_status": "0x1",
+      "gas_used": "0x7a1200",
+      "effective_gas_price_wei": "0x0",
+      "actual_fee_wei": "0",
+      "finalized_at": "2026-10-20T06:03:43.812Z"
+    },
+    {
+      "stage": "FOUNDER_VOTE_YES",
+      "status": "FINALIZED",
+      "prepared_at": "2026-10-20T06:35:52.146Z",
+      "user_fee_cap_wei": "0",
+      "signed_gas_limit": "500000",
+      "signed_gas_price_wei": "0",
+      "signed_fee_cap_wei": "0",
+      "transaction_id": "0x623fcedd7df12e20710e5857760d8b07d995fa527ad16bd7689b0a20efe85558",
+      "submitted_at": "2026-10-20T06:35:53.939Z",
+      "final_status": "FINALIZED",
+      "result_name": "MAJORITY_AGREE",
+      "transaction_execution": "SUCCESS",
+      "evm_receipt_status": "0x1",
+      "gas_used": "0x7a1200",
+      "effective_gas_price_wei": "0x0",
+      "actual_fee_wei": "0",
+      "finalized_at": "2026-10-20T06:36:35.009Z"
+    }
+  ],
   "active_transaction": null,
+  "latest_final_readback": {
+    "latest_chain_timestamp": "1792478535",
+    "proposal_status": "VOTING",
+    "proposal_kind": "MEMBER_ADD",
+    "votes_for": "1",
+    "votes_against": "0",
+    "voting_ends_at": "1792562587",
+    "founder_weight": "1",
+    "rabby_weight": "0",
+    "read_variant": "LATEST_FINAL"
+  },
   "notes": [
-    "Preparation only. No governance transaction has been submitted.",
+    "The MEMBER_ADD proposal and founder YES vote are finalized; no finalization, execution, vault registration, or financial transaction has been submitted.",
     "A stage may be advanced only after fresh latest-final state checks and explicit user authorization with a numeric per-transaction fee cap.",
     "Unresolved or hashless signing attempts block all replay until manually reconciled."
   ]

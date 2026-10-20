@@ -31,14 +31,14 @@ The GenLayer receipts returned the contract addresses shown above and decoded th
 - Actual EVM deployment fees recorded: `0 GEN`; fee commitments: `0 GEN`; unknown fee liabilities: `0 GEN`; remaining ledger ceiling: `10 GEN`.
 - The zero fee result is specific to these two receipts; it is not a future fee guarantee.
 - First financial-test transfer ceiling remains `0.01 GEN`, separately authorized. Actual test value and committed test value are both zero.
-- No DAO membership onboarding, vault registration, treasury funding, investment, payout, refund, repayment, or other governance/financial transaction was submitted.
+- At the time of the deployment-only authorization, no governance or financial transaction had been submitted. A later, separately authorized MEMBER_ADD proposal and founder vote are recorded below. No vault registration, treasury funding, investment, payout, refund, repayment, or GEN test transfer has been submitted.
 
 ## Other evidence and limitations
 
 - StudioNet `eth_chainId` returned `0xf22f`; current `eth_gasPrice` returned `0x0` at preflight. These are time-specific read-only observations.
 - SpecLock deployment and triggered-transfer receipts remain external reference evidence only. They do not establish MandateOS payout settlement.
 - EOA payouts remain unverified and unsuitable for production until MandateOS independently reconciles a causal external transfer receipt. Do not retry uncertain transfers.
-- Two-wallet DAO governance, live funding, validator-backed web evidence, IC-beneficiary payouts, refunds, repayments and keeper reconciliation have not been exercised.
+- Two-member DAO voting is not yet possible because Rabby membership has not been executed. Live funding, validator-backed web evidence, IC-beneficiary payouts, refunds, repayments and keeper reconciliation have not been exercised.
 - Local tests and GenVM lint are reported in `BUILD_STATUS.md`; they are not live settlement evidence.
 
 ## Repository evidence
@@ -56,4 +56,17 @@ At `2026-10-20T00:15:28.923Z`, the exact stable GenLayerJS 1.1.8 `propose_member
 
 The proposed transaction is `MandateOS.propose_member_add("member-add-rabby-1af111b06e6f6a05-20261020-01", "GvERsG5vagW9QVcqAWMY8TVq+Fw=")`. The encoded string resolves to the exact Rabby address listed above. The candidate ID remains unused as of the read-only observation.
 
-The 10 GEN cumulative ledger remains unchanged: actual fees `0`, committed fees `0`, unknown fee liabilities `0`, remaining `10 GEN`. No DAO treasury funding, project financing, payout, refund, repayment, or test transfer was performed. The read-only receipt and membership checks do not prove live wallet signing or validator consensus for any governance action.
+The 10 GEN cumulative ledger remains unchanged: actual fees `0`, committed fees `0`, unknown fee liabilities `0`, remaining `10 GEN`. No DAO treasury funding, project financing, payout, refund, repayment, or test transfer was performed. The read-only checks above do not prove live wallet signing or validator consensus; the actual governance actions and their receipts are recorded below.
+
+## Separately authorized live member-add proposal and founder vote
+
+The founder separately authorized one `propose_member_add` transaction and later one `vote(proposal_id, true)` transaction. Both were submitted through the gated GenLayer CLI workflow on StudioNet; no additional transaction was submitted.
+
+| Stage | Transaction | Result | EVM receipt | Actual fee |
+|---|---|---|---|---|
+| `propose_member_add` | `0xc1e14ac8f3019cb5996b03f1d4e443b787c2f69cf4f7ecb0c473f3c3907b4264` | `FINALIZED`, `MAJORITY_AGREE`, leader `SUCCESS` | status `0x1`; gas used `0x7a1200`; effective gas price `0x0` | `0 GEN` |
+| founder `vote(..., true)` | `0x623fcedd7df12e20710e5857760d8b07d995fa527ad16bd7689b0a20efe85558` | `FINALIZED`, `MAJORITY_AGREE`, leader `SUCCESS` | status `0x1`; gas used `0x7a1200`; effective gas price `0x0` | `0 GEN` |
+
+The latest-final state read after the vote reports proposal ID `member-add-rabby-1af111b06e6f6a05-20261020-01`, kind `MEMBER_ADD`, status `VOTING`, votes for `1`, votes against `0`, voting deadline `1792562587`, founder weight `1`, and Rabby weight `0`. Latest chain timestamp at that read was `1792478535`, before the deadline. Rabby is not yet a member. No finalization, timelock wait, execution, vault registration, or financial operation has been authorized or submitted.
+
+The GenLayer receipt for the vote identifies the exact `vote` calldata, founder sender, Core recipient, `FINALIZED` status, `MAJORITY_AGREE`, and leader `SUCCESS`; the independent EVM receipt has status `0x1`, gas used `0x7a1200`, and effective gas price `0`. The budget ledger records both transactions, actual fees `0`, no pending or unknown liabilities, and `10 GEN` remaining. Zero fee is the observed result of these transactions, not a guarantee for future transactions.
