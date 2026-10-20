@@ -18,6 +18,13 @@ describe("onchain state mapping", () => {
     expect(mapTransactionState({ statusName: "FINALIZED" })).toBe("FINALIZED_EXECUTION_UNKNOWN");
   });
 
+  it("maps the stable GenLayerJS snake_case transaction receipt fields", () => {
+    expect(mapTransactionState({ status_name: "FINALIZED", tx_execution_result_name: "FINISHED_WITH_RETURN" }))
+      .toBe("FINALIZED_SUCCESS");
+    expect(mapTransactionState({ status_name: "FINALIZED", tx_execution_result_name: "FINISHED_WITH_ERROR" }))
+      .toBe("FINALIZED_FAILED");
+  });
+
   it("does not equate accepted or unknown receipts with completed execution", () => {
     expect(mapTransactionState({ statusName: "ACCEPTED", txExecutionResultName: "FINISHED_WITH_RETURN" }))
       .toBe("ACCEPTED");

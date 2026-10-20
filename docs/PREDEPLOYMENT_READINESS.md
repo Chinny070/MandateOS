@@ -1,5 +1,7 @@
 # MandateOS StudioNet deployment preparation
 
+> **Historical deployment-preparation report.** Both MandateOS contracts have since been deployed successfully. The former GenLayerJS 2 RC dashboard fee-policy finding is closed for the ordinary StudioNet wallet-write path by pinning the stable CLI-compatible 1.1.8 SDK and adding strict EVM fee preflight; live Rabby writes remain unverified. Current DAO onboarding steps and their exact cap are in [MEMBERSHIP_ONBOARDING.md](MEMBERSHIP_ONBOARDING.md).
+
 **Preparation only. No MandateOS transaction, wallet unlock, signature, deployment, or GEN transfer was performed.** Target remains StudioNet, chain ID `61999`, RPC `https://studio.genlayer.com/api`. `main` is unchanged.
 
 ## Verdicts

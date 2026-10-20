@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "status": "PREPARED_NOT_AUTHORIZED",
+  "network": "StudioNet",
+  "chain_id": 61999,
+  "core_address": "0x32698630D6144882Bd0c1D5B00C74348c53ea58B",
+  "project_id": "mandateos-demo-001",
+  "proposal_id": "member-add-rabby-1af111b06e6f6a05-20261020-01",
+  "founder": "0xaffe15eec45b68835cc9e5b4ab85dd5deae8e70b",
+  "member": "0x1Af111b06E6f6A05Bd41572A016318f1356aF85c",
+  "transactions": [],
+  "active_transaction": null,
+  "notes": [
+    "Preparation only. No governance transaction has been submitted.",
+    "A stage may be advanced only after fresh latest-final state checks and explicit user authorization with a numeric per-transaction fee cap.",
+    "Unresolved or hashless signing attempts block all replay until manually reconciled."
+  ]
+}

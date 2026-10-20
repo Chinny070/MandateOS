@@ -6,7 +6,7 @@ The repository also contains a noncustodial, read-only StudioNet keeper and a Re
 
 ## Release status
 
-MandateOS itself is **not deployed**. A separate SpecLock deployment on StudioNet now supplies a verified reference for the installed GenLayer CLI 0.39.1 route. MandateOS's ordered deploy script uses the CLI's bundled GenLayerJS 1.1.8, waits for `FINALIZED`, checks majority consensus and leader execution success, journals both contract stages, and reconciles the actual EVM receipt fee. This route does not depend on GenLayerJS 2.0.0-rc.1's unsupported `sim_getFeeConfig` call. A deployment-only attempt is conditional on explicit authorization, the active existing signer being unlocked by the CLI prompt, source and constructor checks, and the cumulative 10 GEN guard. No MandateOS deployment or GEN movement has been performed.
+MandateOS Core and the first ProjectVault are deployed on StudioNet. Their addresses, finalized transaction receipts, constructor arguments and source hashes are documented in [LIVE_PROOFS.md](LIVE_PROOFS.md). No treasury funding or GEN transfer has been performed. The current task prepares the first DAO-member proposal; it does not submit governance transactions.
 
 SpecLock's live StudioNet withdrawal evidence demonstrates a parent-to-triggered-child relationship with an exact EOA recipient, amount, finalized child receipt and `value_credited: true`. This provides a concrete receipt pattern for a future MandateOS keeper adapter. MandateOS has not yet wired this observation into its reconciler or run its own beneficiary payout, so its EOA milestone payouts remain unverified and cannot be marked successful or retried automatically.
 
@@ -19,7 +19,7 @@ Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [
 - `contracts/mandate_os.py` — membership, proposal snapshots and voting, mandates, evidence receipts, allocations, refunds, agreements, milestones, challenges and governed resolutions.
 - `contracts/project_vault.py` — project funding custody, agreement and milestone records, reserved payouts/refunds/distributions, payable repayments and revenue, default and closure guards.
 - `keeper/` — StudioNet-pinned RPC reader, durable SQLite observation archive, reconciliation classifications, alerts and reports. It never signs or sends GEN.
-- `web/` — real-data dashboard. Core and vault indexes allow recent proposal, project and vault record discovery. User-signed writes use GenLayerJS fee estimation and preserve child-message allocations; they fail closed while StudioNet's current fee-policy RPC method is unavailable.
+- `web/` — real-data dashboard. Core and vault indexes allow recent proposal, project and vault record discovery. Wallet writes use the CLI-compatible GenLayerJS 1.1.8 route with a strict StudioNet gas-estimation guard, account/chain validation and fee confirmation before Rabby opens. Native GEN value transfer remains disabled in this wallet-write helper.
 - `deploy/` and `scripts/` — explicit-gate ordered CLI script-runner deployment, per-signature EVM gas caps, finalized receipt checks, deployment journals and the cumulative 10 GEN operational budget.
 - `tests/` — Direct Mode contract tests, keeper/RPC adapter tests, and frontend state-mapping tests. Test fixtures are local evidence only.
 - `docs/` — architecture, financial model, test matrix and readiness documentation.

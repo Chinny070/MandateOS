@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
 import { TransactionHashVariant } from "genlayer-js/types";
-import { submitStudioNetWrite } from "./transactions";
+import { createStudioNetFeeGuard, formatFeeWei, submitStudioNetWrite } from "./transactions";
 import {
   formatUtcTimestamp,
   formatWei,
@@ -201,6 +201,26 @@ export function App() {
   const effectiveMemberAddress = handles.memberAddress || wallet;
   const discoveredVault = dashboard.registeredVault?.ok ? String(dashboard.registeredVault.value) : "";
   const effectiveVault = handles.vaultAddress || (ADDRESS.test(discoveredVault) ? discoveredVault : "");
+
+  function createWalletWriter(account: string, operation: string, targetContract: string) {
+    if (!window.ethereum) throw new Error("No injected EIP-1193 wallet is available.");
+    const guardedProvider = createStudioNetFeeGuard(window.ethereum, account, (quote) => window.confirm(
+      `Review StudioNet transaction fee before opening your wallet.\n\n` +
+      `Action: ${operation}\n` +
+      `Contract: ${targetContract}\n` +
+      `Maximum EVM fee commitment: ${formatFeeWei(quote.maximumFeeWei)}\n` +
+      `Gas limit: ${quote.gasLimit.toString()}\n` +
+      `Gas price: ${quote.gasPriceWei.toString()} wei\n` +
+      `GEN value attached: ${formatFeeWei(quote.valueWei)}\n\n` +
+      `The dashboard will now open the wallet popup. Check the same network, account, destination and fee there before signing. ` +
+      `This is an EVM fee quote for this transaction only; it is not a cumulative-budget receipt or proof of finalization.`,
+    ));
+    return createClient({
+      chain: studionet,
+      account: account as `0x${string}`,
+      provider: guardedProvider as typeof window.ethereum,
+    });
+  }
 
   useEffect(() => {
     const provider = window.ethereum;
@@ -469,11 +489,11 @@ export function App() {
 
       const amountWei = BigInt(String(payout?.[3] ?? "0"));
       setAcknowledgmentSubmitting(true);
-      const writer: any = createClient({
-        chain: studionet,
-        account: account as `0x${string}`,
-        provider: window.ethereum,
-      });
+      const writer: any = createWalletWriter(
+        account,
+        `ProjectVault.acknowledge_eoa_payout_received(${handles.paymentId.trim()}, ${amountWei.toString()} wei)`,
+        effectiveVault,
+      );
       const call = {
         account: account as `0x${string}`,
         address: effectiveVault as `0x${string}`,
@@ -521,11 +541,11 @@ export function App() {
         throw new Error("A MandateOS address and proposal ID are required.");
       }
       const account = await requireCurrentStudioNetWallet();
-      const writer: any = createClient({
-        chain: studionet,
-        account: account as `0x${string}`,
-        provider: window.ethereum,
-      });
+      const writer: any = createWalletWriter(
+        account,
+        `MandateOS.vote(${handles.proposalId.trim()}, ${support ? "YES" : "NO"})`,
+        handles.mandateAddress,
+      );
       const call = {
         account: account as `0x${string}`,
         address: handles.mandateAddress as `0x${string}`,
@@ -546,7 +566,7 @@ export function App() {
       if (!window.ethereum || !wallet) throw new Error("Connect a StudioNet wallet first.");
       if (!ADDRESS.test(handles.mandateAddress)) throw new Error("A MandateOS Core address is required.");
       const account = await requireCurrentStudioNetWallet();
-      const writer: any = createClient({ chain: studionet, account: account as `0x${string}`, provider: window.ethereum });
+      const writer: any = createWalletWriter(account, `${description}: ${functionName}`, handles.mandateAddress);
       const call = { account: account as `0x${string}`, address: handles.mandateAddress as `0x${string}`, functionName, args };
       const txId = await submitStudioNetWrite(writer, call);
       update("transactionId", String(txId));
@@ -561,7 +581,7 @@ export function App() {
     try {
       if (!ADDRESS.test(effectiveVault)) throw new Error("A ProjectVault address is required.");
       const account = await requireCurrentStudioNetWallet();
-      const writer: any = createClient({ chain: studionet, account: account as `0x${string}`, provider: window.ethereum });
+      const writer: any = createWalletWriter(account, `${description}: ${functionName}`, effectiveVault);
       const call = { account: account as `0x${string}`, address: effectiveVault as `0x${string}`, functionName, args };
       const txId = await submitStudioNetWrite(writer, call);
       update("transactionId", String(txId));

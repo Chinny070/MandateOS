@@ -47,3 +47,13 @@ The GenLayer receipts returned the contract addresses shown above and decoded th
 - Fee and value ledger: `deployments/studionet-budget.json`.
 - Address configuration: `deployments/studionet.json`.
 - `main` was not changed or merged.
+
+## Read-only governance onboarding preflight
+
+On 2026-10-20, read-only latest-final queries against the deployed Core reported proposal count `0`, candidate member-add ID `member-add-rabby-1af111b06e6f6a05-20261020-01` absent from the index and `UNKNOWN`, founder weight `1`, and Rabby weight `0`. The latest EVM block timestamp returned was `1792455328` (`2026-10-20T00:15:28Z`). These are state observations only; no proposal or vote transaction was submitted.
+
+At `2026-10-20T00:15:28.923Z`, the exact stable GenLayerJS 1.1.8 `propose_member_add` call was run with a fake EIP-1193 provider that threw before wallet or broadcast. The StudioNet RPC returned chain `0xf22f`, `eth_estimateGas=500000`, transaction gas limit `500000`, `eth_gasPrice=0`, and therefore a current maximum EVM fee commitment of `0 GEN`; attached value was zero. No transaction hash was created. This fee quote must be repeated before a future signature; a zero current quote does not guarantee future transaction fees.
+
+The proposed transaction is `MandateOS.propose_member_add("member-add-rabby-1af111b06e6f6a05-20261020-01", "GvERsG5vagW9QVcqAWMY8TVq+Fw=")`. The encoded string resolves to the exact Rabby address listed above. The candidate ID remains unused as of the read-only observation.
+
+The 10 GEN cumulative ledger remains unchanged: actual fees `0`, committed fees `0`, unknown fee liabilities `0`, remaining `10 GEN`. No DAO treasury funding, project financing, payout, refund, repayment, or test transfer was performed. The read-only receipt and membership checks do not prove live wallet signing or validator consensus for any governance action.
