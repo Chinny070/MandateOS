@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import {
   createStudioNetFeeGuard,
+  addressToContractString,
+  assertGovernanceVoteReady,
   connectStudioNetWallet,
   createSingleSubmissionGuard,
   formatFeeWei,
@@ -51,6 +53,21 @@ function walletProvider(overrides: { chain?: string; accounts?: string[] } = {})
 afterEach(() => vi.unstubAllGlobals());
 
 describe("StudioNet stable SDK wallet-write guard", () => {
+  it("requires a current member, open proposal and onchain time before opening a vote wallet request", () => {
+    expect(() => assertGovernanceVoteReady("VOTING", 1n, 100n, 101n)).not.toThrow();
+    expect(() => assertGovernanceVoteReady("TIMELOCKED", 1n, 100n, 101n)).toThrow("not in its onchain VOTING");
+    expect(() => assertGovernanceVoteReady("VOTING", 0n, 100n, 101n)).toThrow("no active MandateOS voting weight");
+    expect(() => assertGovernanceVoteReady("VOTING", 1n, 101n, 101n)).toThrow("reached the proposal voting deadline");
+  });
+
+  it("encodes wallet addresses for contract string parameters that construct GenLayer Address values", () => {
+    expect(addressToContractString("0x1Af111b06E6f6A05Bd41572A016318f1356aF85c"))
+      .toBe("GvERsG5vagW9QVcqAWMY8TVq+Fw=");
+    expect(addressToContractString("0xaffe15eec45b68835cc9e5b4ab85dd5deae8e70b"))
+      .toBe("r/4V7sRbaINcyeW0q4XdXero5ws=");
+    expect(() => addressToContractString("0x1234")).toThrow("valid 20-byte wallet address");
+  });
+
   it("switches a connected wallet to StudioNet before returning its account", async () => {
     let chain = "0x1";
     const request = vi.fn(async ({ method }: { method: string }) => {

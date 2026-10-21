@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
 import { TransactionHashVariant } from "genlayer-js/types";
-import { connectStudioNetWallet, createSingleSubmissionGuard, createStudioNetFeeGuard, formatFeeWei, STUDIONET_CHAIN_HEX, STUDIONET_RPC, submitStudioNetWrite } from "./transactions";
+import { addressToContractString, assertGovernanceVoteReady, connectStudioNetWallet, createSingleSubmissionGuard, createStudioNetFeeGuard, formatFeeWei, STUDIONET_CHAIN_HEX, STUDIONET_RPC, submitStudioNetWrite } from "./transactions";
 import {
   formatUtcTimestamp,
   formatWei,
@@ -334,7 +334,7 @@ export function App() {
         query(next, "mandate", mandate, "get_mandate_summary"),
       ];
       if (effectiveMemberAddress && ADDRESS.test(effectiveMemberAddress)) {
-        coreReads.push(query(next, "member", mandate, "get_member_weight", [effectiveMemberAddress]));
+        coreReads.push(query(next, "member", mandate, "get_member_weight", [addressToContractString(effectiveMemberAddress)]));
       }
       if (handles.proposalId.trim()) {
         coreReads.push(query(next, "proposal", mandate, "get_proposal_summary", [handles.proposalId.trim()]));
@@ -606,6 +606,20 @@ export function App() {
         throw new Error("A MandateOS address and proposal ID are required.");
       }
       const account = await requireCurrentStudioNetWallet();
+      const [memberWeightValue, proposalSummaryValue, proposalTimingValue, latestBlock] = await Promise.all([
+        readLatest(handles.mandateAddress, "get_member_weight", [addressToContractString(account)]),
+        readLatest(handles.mandateAddress, "get_proposal_summary", [handles.proposalId.trim()]),
+        readLatest(handles.mandateAddress, "get_proposal_timing", [handles.proposalId.trim()]),
+        readClient.request({ method: "eth_getBlockByNumber", params: ["latest", false] } as never),
+      ]);
+      const proposalSummary = asArray(proposalSummaryValue) ?? [];
+      const proposalTiming = asArray(proposalTimingValue) ?? [];
+      assertGovernanceVoteReady(
+        proposalSummary[1],
+        BigInt(String(memberWeightValue)),
+        BigInt(String((latestBlock as { timestamp?: unknown } | null)?.timestamp ?? "0")),
+        BigInt(String(proposalTiming[0] ?? "0")),
+      );
       const writer: any = createWalletWriter(
         account,
         `MandateOS.vote(${handles.proposalId.trim()}, ${support ? "YES" : "NO"})`,
@@ -694,7 +708,7 @@ export function App() {
       setMessage("Enter the project ID, milestone ID and your evidence digest.");
       return;
     }
-    await submitVaultMemberCall("challenge_milestone", [milestoneId, wallet, digest], "Milestone challenge");
+    await submitVaultMemberCall("challenge_milestone", [milestoneId, addressToContractString(wallet), digest], "Milestone challenge");
     update("projectId", projectId);
     update("milestoneId", milestoneId);
   }

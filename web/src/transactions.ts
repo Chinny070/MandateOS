@@ -25,6 +25,24 @@ export const STUDIONET_ADD_CHAIN = {
   blockExplorerUrls: ["https://genlayer-explorer.vercel.app"],
 };
 
+/** GenLayer contract signatures that accept `str` then call Address(str) require base64 address bytes. */
+export function addressToContractString(address: string): string {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("A valid 20-byte wallet address is required.");
+  const bytes = address.slice(2).match(/.{2}/g)?.map((byte) => Number.parseInt(byte, 16)) ?? [];
+  return btoa(String.fromCharCode(...bytes));
+}
+
+export function assertGovernanceVoteReady(
+  proposalStatus: unknown,
+  memberWeight: bigint,
+  latestChainTimestamp: bigint,
+  votingEndsAt: bigint,
+): void {
+  if (String(proposalStatus).toUpperCase() !== "VOTING") throw new Error("The proposal is not in its onchain VOTING state.");
+  if (memberWeight <= 0n) throw new Error("The connected wallet has no active MandateOS voting weight in latest-final state.");
+  if (latestChainTimestamp >= votingEndsAt) throw new Error("The latest StudioNet timestamp has reached the proposal voting deadline.");
+}
+
 function walletErrorCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
   const candidate = error as { code?: unknown; cause?: { code?: unknown } };
