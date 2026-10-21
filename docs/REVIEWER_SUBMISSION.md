@@ -33,7 +33,7 @@ EOA payment acknowledgments are stored as beneficiary attestations only. They do
 - MandateOS Core: `0x32698630D6144882Bd0c1D5B00C74348c53ea58B`, deployment transaction `0x8c5c53afc9e6f8958688df572e946dc8c3880133a388bf98640615e5fd1841a7`.
 - ProjectVault: `0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4`, deployment transaction `0xd42a4c5dcb6a25ba7909eb312239d21bc8c27ffa2ef4b3cd1c33e320b5931d39`.
 - Core source SHA-256 at deployment: `a0cad2bdc2a7be57d5e80e4f681d5f0897708bcf8b6ace53a81480c2e849a5d4`; ProjectVault source SHA-256: `2da278f14385feee0191dfd2ed9d8cfe0c29a03d5138aa638885f179f9be3c33`.
-- MEMBER_ADD proposal, founder YES vote, and finalization are finalized with majority agreement and successful leader execution. The Rabby member is **not yet added**: current latest-final status remains `TIMELOCKED`, Rabby weight `0`.
+- MEMBER_ADD proposal, founder YES vote, and finalization are finalized with majority agreement and successful leader execution. At the latest successful read, the Rabby member was **not yet added**: status `TIMELOCKED`, Rabby weight `0`. The execution window begins October 22 at 07:27:56 Lagos; a new latest-final read is required before any separately authorized execution.
 - Fresh read-only StudioNet observation at `2026-10-21T07:13:29.863Z` (latest block timestamp `1792566806`, 2026-10-21 07:13:26 UTC): chain ID `0xf22f`; Core treasury summary all zero; mandate version 1, max project exposure 2000 bps, reserve 1500 bps, max single allocation 30 GEN, 86400-second challenge window, and 604800-second (7-day) evidence freshness limit; registered project count 0; Core has no registered vault for the project; deployed vault points to Core, reports project ID `mandateos-demo-001`, balance 0.
 - Full live receipts, times, and limitations are in [LIVE_PROOFS.md](../LIVE_PROOFS.md).
 
@@ -52,7 +52,7 @@ Local Direct Mode tests exercise governance, accounting, evidence gating, and co
 
 Candidate registration proposal ID: `vault-register-mandateos-demo-001-20261022-01`. Latest-final check at `2026-10-21T07:13:29.863Z` returned status `UNKNOWN` and the ID was absent from the proposal index. It must be checked again immediately before proposing.
 
-Proposed demonstration cap: **0.001 GEN** (`1000000000000000` wei). It is a proposed limit, not a user-approved or onchain value. A hypothetical first-test value plan of `0.009 GEN` treasury deposit plus `0.001 GEN` treasury-to-vault funding totals `0.01 GEN` across both value transfers. Under the deployed 20% concentration limit and 15% liquid reserve, the 0.009 GEN deposited base implies a 0.0018 GEN concentration bound and 0.00135 GEN required reserve; a 0.001 GEN funding amount is below the cap and leaves 0.008 GEN in treasury. This arithmetic does not make the plan authorized, eligible, or sufficient for any real project.
+The owner approved preserving the demonstration cap of **0.001 GEN** (`1000000000000000` wei) and the metadata digest below on 2026-10-21. This approval is limited to the parameter values; it does not authorize proposal submission, any vote/finalization/execution, wallet signing, or a value transfer. The cap is not yet onchain. A hypothetical first-test value plan of `0.009 GEN` treasury deposit plus `0.001 GEN` treasury-to-vault funding totals `0.01 GEN` across both value transfers. Under the deployed 20% concentration limit and 15% liquid reserve, the 0.009 GEN deposited base implies a 0.0018 GEN concentration bound and 0.00135 GEN required reserve; a 0.001 GEN funding amount is below the cap and leaves 0.008 GEN in treasury. This is arithmetic only, not authorization, eligibility, or sufficiency for a real project; no such funding plan has been approved.
 
 Prepared commitment: `sha256:80a66dfa722a75e1403e66a8bdb816d3071e727dea522c330407842d82902bf4` (recompute with `node scripts/registration-evidence-digest.mjs`). The committed package is [mandateos-demo-001-registration.json](evidence/mandateos-demo-001-registration.json). It contains deployment and project identity metadata only, no external project claims, and explicitly says `NOT_ASSESSED`. The deployed method stores the submitted string as metadata and resets eligibility to `UNASSESSED`; the hash cannot prove eligibility or substitute for the contract’s later validator-backed evidence flow.
 
@@ -63,12 +63,12 @@ MandateOS.propose_vault_registration(
   "vault-register-mandateos-demo-001-20261022-01",
   "mandateos-demo-001",
   "AzJbfrJmjP9r47LpgF1gC7nhovQ=",  # base64 string encoding of the exact ProjectVault address
-  1000000000000000,                # proposed cap_wei; requires owner approval
+  1000000000000000,                # owner-approved parameter; proposal still requires separate authorization
   "sha256:80a66dfa722a75e1403e66a8bdb816d3071e727dea522c330407842d82902bf4"
 )
 ```
 
-No registration transaction is authorized. The owner must approve both the proposed cap and digest before any proposal uses them. The cap getter limitation must be disclosed to reviewers.
+No registration transaction is authorized. The owner-approved values are recorded in `deployments/registration-parameter-approval.json`; proposal submission still requires a separate explicit transaction authorization after fresh latest-final checks and fee approval. The digest is metadata only and the deployed Core's cap getter limitation must be disclosed to reviewers.
 
 ## Reproduction and demonstration
 

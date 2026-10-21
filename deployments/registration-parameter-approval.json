@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "status": "PARAMETERS_APPROVED_ONLY",
+  "approved_date": "2026-10-21",
+  "project_id": "mandateos-demo-001",
+  "project_cap_wei": "1000000000000000",
+  "metadata_digest": "sha256:80a66dfa722a75e1403e66a8bdb816d3071e727dea522c330407842d82902bf4",
+  "digest_meaning": "Project registration metadata commitment only; not verified eligibility or an AI assessment.",
+  "authorization_scope": "Preserve these exact parameters for a future VAULT_REGISTER proposal.",
+  "explicitly_not_authorized": [
+    "proposal submission",
+    "wallet unlock or signing",
+    "GEN transfer or deposit",
+    "governance vote, finalization, or execution",
+    "project eligibility claim"
+  ],
+  "proposal_id_candidate": "vault-register-mandateos-demo-001-20261022-01",
+  "proposal_id_status": "MUST_RECHECK_UNUSED_BEFORE_ANY_PROPOSAL"
+}

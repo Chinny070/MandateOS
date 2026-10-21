@@ -46,6 +46,8 @@
 
 ## Saturday submission preparation additions — 2026-10-21
 
+- Registration parameter approval fixture test binds the exact approved project ID, cap in wei, and metadata digest to the canonical metadata package, and asserts the record explicitly excludes proposal submission, signing, value transfer, and governance execution. Script suite after this addition: **21 passed**.
+
 - `web/src/transactions.test.ts` adds browser-wallet connection tests for StudioNet chain switching, add-chain fallback on EIP-1193 error `4902`, user rejection, and account mutation during connection. It verifies base64 address encoding for contract methods that accept `str` and construct `Address`, vote preflight rejection for non-members/closed deadlines, plus a synchronous global single-submission guard that blocks overlapping writes and can be reused after completion.
 - `web/src/App.tsx` pins latest-final reads to the configured StudioNet RPC, displays the connected wallet and network state, persists an explicit dashboard disconnect, requests a chain switch/add only after a user click, disables writes on the wrong chain, and guards vote, milestone, challenge, and recipient-acknowledgment submits against duplicate clicks. Local disconnect does not revoke Rabby site permissions.
 - `scripts/saturday-review-readonly.mjs` reads the actual deployed member proposal, member weights, treasury, mandate, vault identity, project index, and proposed registration ID with `LATEST_FINAL`; it imports no signer and has no write path. Its latest observation is time-bound and is not a live wallet transaction test.

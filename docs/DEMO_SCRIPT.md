@@ -20,7 +20,7 @@ Explain that the active policy requires quorum and approval based on membership 
 
 ## 4. Show evidence boundaries and registration preparation (90 seconds)
 
-Open [the registration metadata package](evidence/mandateos-demo-001-registration.json) and reproduce its hash with `node scripts/registration-evidence-digest.mjs`. Explain that it binds deployed project identity metadata only, with zero external claims and status `NOT_ASSESSED`. It does not pass eligibility. Show the proposed 0.001 GEN cap as a conservative demonstration limit that still requires owner approval; it is not in onchain state.
+Open [the registration metadata package](evidence/mandateos-demo-001-registration.json) and reproduce its hash with `node scripts/registration-evidence-digest.mjs`. Explain that it binds deployed project identity metadata only, with zero external claims and status `NOT_ASSESSED`. It does not pass eligibility. Show the owner-approved parameter values (0.001 GEN cap and exact digest) as offchain proposal parameters only: they are not in onchain state, and parameter approval did not authorize any governance transaction or transfer.
 
 Explain the future evidence flow: governance-approved HTTPS source and criteria, validator-comparable assessment, timestamp/freshness receipt, fail-closed treatment when inconclusive, then a separate allocation governance sequence. No live project eligibility assessment has been completed.
 
