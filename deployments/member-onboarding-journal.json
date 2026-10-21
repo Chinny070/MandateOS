@@ -46,22 +46,43 @@
       "effective_gas_price_wei": "0x0",
       "actual_fee_wei": "0",
       "finalized_at": "2026-10-20T06:36:35.009Z"
+    },
+    {
+      "stage": "FINALIZE_MEMBER_ADD",
+      "status": "FINALIZED",
+      "prepared_at": "2026-10-21T06:27:55.049Z",
+      "user_fee_cap_wei": "0",
+      "signed_gas_limit": "500000",
+      "signed_gas_price_wei": "0",
+      "signed_fee_cap_wei": "0",
+      "transaction_id": "0xce45577d02ffa736a7ff0fbefd3f833289fb3544e223672eb75b31db1eb883e0",
+      "submitted_at": "2026-10-21T06:27:56.955Z",
+      "final_status": "FINALIZED",
+      "result_name": "MAJORITY_AGREE",
+      "transaction_execution": "SUCCESS",
+      "evm_receipt_status": "0x1",
+      "gas_used": "0x7a1200",
+      "effective_gas_price_wei": "0x0",
+      "actual_fee_wei": "0",
+      "finalized_at": "2026-10-21T06:28:40.235Z"
     }
   ],
   "active_transaction": null,
   "latest_final_readback": {
-    "latest_chain_timestamp": "1792478535",
-    "proposal_status": "VOTING",
+    "latest_chain_timestamp": "1792564201",
+    "proposal_status": "TIMELOCKED",
     "proposal_kind": "MEMBER_ADD",
     "votes_for": "1",
     "votes_against": "0",
     "voting_ends_at": "1792562587",
+    "execute_after": "1792650476",
+    "execute_by": "1793255276",
     "founder_weight": "1",
     "rabby_weight": "0",
     "read_variant": "LATEST_FINAL"
   },
   "notes": [
-    "The MEMBER_ADD proposal and founder YES vote are finalized; no finalization, execution, vault registration, or financial transaction has been submitted.",
+    "The MEMBER_ADD proposal, founder YES vote, and proposal finalization are finalized; the proposal is TIMELOCKED. Do not execute until a separate explicit authorization and the onchain execute_after timestamp.",
     "A stage may be advanced only after fresh latest-final state checks and explicit user authorization with a numeric per-transaction fee cap.",
     "Unresolved or hashless signing attempts block all replay until manually reconciled."
   ]

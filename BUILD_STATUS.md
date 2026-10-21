@@ -33,7 +33,7 @@ See [LIVE_PROOFS.md](LIVE_PROOFS.md) and the deployment journal for transaction 
 
 ## Remaining blockers and next actions
 
-1. The Rabby MEMBER_ADD proposal is in `VOTING` with one founder YES vote. Wait for its actual onchain deadline, then separately authorize finalization, wait the execution timelock, and separately authorize execution. Rabby currently has weight `0`.
+1. The Rabby MEMBER_ADD proposal is `TIMELOCKED` after finalized founder YES and proposal finalization. Its onchain `executeAfter=1792650476` is **2026-10-22 07:27:56 Africa/Lagos**; do not execute before then, and require separate explicit authorization. The execution window expires at `executeBy=1793255276` (**2026-10-29 07:27:56 Africa/Lagos**). Rabby currently has weight `0`.
 2. Core currently has no registered vault. Register it through finalized governance before financing.
 3. Two-wallet governance, treasury deposits/funding, evidence evaluation, IC-recipient payout, repayments, refunds and keeper reconciliation still need controlled live testing and separate approvals.
 4. EOA payouts remain unverified and must not be used for production settlement. No automatic retry or reservation release is allowed for uncertain transfers.
@@ -60,3 +60,10 @@ The first financial test remains capped at `0.01 GEN` and requires its own expli
 - **Latest-final state:** proposal `VOTING`; votes for `1`, against `0`; snapshot weight `1`; voting deadline `1792562587`; latest chain timestamp `1792478535`; founder weight `1`; Rabby weight `0` until proposal execution.
 - **Budget:** actual fees `0`, committed fees `0`, unknown fee liabilities `0`, remaining cumulative ceiling `10 GEN`; no test value transferred.
 - **Next step:** wait until the latest chain timestamp reaches the onchain voting deadline. Finalization and execution require their own explicit authorization. No other governance or financial transaction was submitted.
+
+## Live MEMBER_ADD finalization — 2026-10-21
+
+- **Finalization transaction:** `0xce45577d02ffa736a7ff0fbefd3f833289fb3544e223672eb75b31db1eb883e0`; `FINALIZED / MAJORITY_AGREE / leader SUCCESS`; EVM receipt status `0x1`, gas used `0x7a1200`, effective gas price `0x0`, actual fee `0 GEN`.
+- **Latest-final proposal readback:** `TIMELOCKED`; 1 YES, 0 NO; `executeAfter=1792650476`; `executeBy=1793255276`; founder weight `1`; Rabby weight `0`.
+- **Exact timelock expiry:** `2026-10-22 07:27:56 Africa/Lagos` (`2026-10-22 06:27:56 UTC`). Earliest execution must still pass a fresh latest-final read and requires separate explicit authorization. Do not execute before that chain timestamp.
+- **Budget:** no fee/value spend recorded; 10 GEN cumulative ceiling remains. No execution, vault registration, or financial transaction was submitted.
