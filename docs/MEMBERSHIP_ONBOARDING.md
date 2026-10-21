@@ -1,6 +1,8 @@
-# StudioNet DAO membership onboarding
+# Historical StudioNet DAO membership onboarding preparation
 
-This workflow is prepared for the already deployed MandateOS Core. It does not deploy contracts and has not submitted any governance transaction.
+> **Superseded status:** The member-add proposal, founder YES vote, and finalization described below have since been submitted and finalized. The latest state is `TIMELOCKED`, not `UNKNOWN` or `VOTING`. See [LIVE_PROOFS.md](../LIVE_PROOFS.md) and [THURSDAY_TO_SATURDAY_RUNBOOK.md](THURSDAY_TO_SATURDAY_RUNBOOK.md) for current verified records. This document's first sections preserve the original pre-submission preparation snapshot.
+
+The workflow was prepared for the already deployed MandateOS Core. It does not deploy contracts. Subsequent separately authorized membership governance transactions are recorded in `LIVE_PROOFS.md`.
 
 ## Latest-final preflight
 
@@ -66,4 +68,10 @@ After the member-add proposal executes, the two-member snapshot has total weight
 - Proposal-specific deadlines do not exist until its proposal transaction finalizes; the workflow reads them afterward.
 - The fee quote must be refreshed before signing. The measured zero price is not a future fee guarantee.
 - EOA payment settlement remains independently unverified; membership changes do not remove that restriction.
-- `main` remains untouched. The planned registration must wait for a user-supplied cap and supported evidence digest.
+- `main` remains untouched. The planned registration must wait for explicit owner approval of the proposed cap and metadata digest, plus a fresh uniqueness and state check.
+
+## Current continuation status — 2026-10-21
+
+Fresh read-only latest-final StudioNet check at `2026-10-21T07:13:29.863Z` returned proposal `TIMELOCKED`, votes 1 YES / 0 NO, founder weight 1, Rabby weight 0, chain timestamp `1792566806`. Execution opens at `1792650476` (2026-10-22 07:27:56 Africa/Lagos). Do not execute without a new explicit one-transaction authorization, successful current gas estimate within its separately authorized cap, and fresh onchain preflight.
+
+The candidate VAULT_REGISTER proposal ID `vault-register-mandateos-demo-001-20261022-01` was `UNKNOWN` and absent from the proposal index at that same observation, but uniqueness must be rechecked immediately before use. Its proposed 0.001 GEN cap and `sha256:80a66dfa722a75e1403e66a8bdb816d3071e727dea522c330407842d82902bf4` metadata commitment are not approved or onchain. The evidence package explicitly states `NOT_ASSESSED`; it does not establish project eligibility. See the reviewer brief for the exact encoded future call and cap/getter limitation.

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
 import { TransactionHashVariant } from "genlayer-js/types";
-import { createStudioNetFeeGuard, formatFeeWei, submitStudioNetWrite } from "./transactions";
+import { connectStudioNetWallet, createSingleSubmissionGuard, createStudioNetFeeGuard, formatFeeWei, STUDIONET_CHAIN_HEX, STUDIONET_RPC, submitStudioNetWrite } from "./transactions";
 import {
   formatUtcTimestamp,
   formatWei,
@@ -63,6 +63,8 @@ const emptyHandles: Handles = {
 };
 
 const STORAGE_KEY = "mandateos.query-handles.v1";
+const WALLET_DISMISSED_KEY = "mandateos.wallet-disconnected.v1";
+const PENDING_WRITE_KEY = "mandateos.pending-wallet-write.v1";
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const HASH = /^0x[0-9a-fA-F]{64}$/;
 
@@ -184,6 +186,9 @@ export function App() {
   const [wallet, setWallet] = useState("");
   const [walletChainId, setWalletChainId] = useState("");
   const [acknowledgmentSubmitting, setAcknowledgmentSubmitting] = useState(false);
+  const pendingWriteRef = useRef(localStorage.getItem(PENDING_WRITE_KEY) ?? "");
+  const [pendingWriteHash, setPendingWriteHash] = useState(pendingWriteRef.current);
+  const [writePending, setWritePending] = useState(Boolean(pendingWriteRef.current));
   const [dashboard, setDashboard] = useState<DashboardData>({});
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
@@ -196,8 +201,14 @@ export function App() {
   const [vaultActivity, setVaultActivity] = useState<IndexedActivity[]>([]);
   const [indexError, setIndexError] = useState("");
   const refreshGeneration = useRef(0);
+  const walletSubmissionGuard = useRef(createSingleSubmissionGuard());
+  const pendingGuardInitialized = useRef(false);
+  if (!pendingGuardInitialized.current) {
+    if (pendingWriteRef.current) walletSubmissionGuard.current.tryBegin();
+    pendingGuardInitialized.current = true;
+  }
 
-  const readClient = useMemo(() => createClient({ chain: studionet }), []);
+  const readClient = useMemo(() => createClient({ chain: studionet, endpoint: STUDIONET_RPC }), []);
   const effectiveMemberAddress = handles.memberAddress || wallet;
   const discoveredVault = dashboard.registeredVault?.ok ? String(dashboard.registeredVault.value) : "";
   const effectiveVault = handles.vaultAddress || (ADDRESS.test(discoveredVault) ? discoveredVault : "");
@@ -227,15 +238,21 @@ export function App() {
     if (!provider) return;
     const handleChain = (chain: unknown) => setWalletChainId(String(chain ?? "").toLowerCase());
     const handleAccounts = (accounts: unknown) => {
+      if (localStorage.getItem(WALLET_DISMISSED_KEY) === "true") return;
       setWallet(Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : "");
     };
+    const handleDisconnect = () => { setWallet(""); setWalletChainId(""); };
     void provider.request({ method: "eth_chainId" }).then(handleChain).catch(() => setWalletChainId(""));
-    void provider.request({ method: "eth_accounts" }).then(handleAccounts).catch(() => setWallet(""));
+    if (localStorage.getItem(WALLET_DISMISSED_KEY) !== "true") {
+      void provider.request({ method: "eth_accounts" }).then(handleAccounts).catch(() => setWallet(""));
+    }
     provider.on?.("chainChanged", handleChain);
     provider.on?.("accountsChanged", handleAccounts);
+    provider.on?.("disconnect", handleDisconnect);
     return () => {
       provider.removeListener?.("chainChanged", handleChain);
       provider.removeListener?.("accountsChanged", handleAccounts);
+      provider.removeListener?.("disconnect", handleDisconnect);
     };
   }, []);
 
@@ -458,21 +475,64 @@ export function App() {
   async function connectWallet() {
     try {
       if (!window.ethereum) throw new Error("No browser wallet provider was found.");
-      const chain = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
-      if (chain !== "0xf22f") throw new Error("Switch the wallet to StudioNet (chain ID 61999), then reconnect.");
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      if (!Array.isArray(accounts) || typeof accounts[0] !== "string" || !ADDRESS.test(accounts[0])) {
-        throw new Error("The wallet did not return an account address.");
-      }
-      setWallet(accounts[0]);
-      setWalletChainId(chain);
-      setMessage("Wallet connected on StudioNet. The dashboard has not submitted a transaction.");
+      const connected = await connectStudioNetWallet(window.ethereum);
+      localStorage.removeItem(WALLET_DISMISSED_KEY);
+      setWallet(connected.account);
+      setWalletChainId(connected.chainId);
+      setMessage("Wallet connected on StudioNet. No transaction was submitted.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Wallet connection failed.");
     }
   }
 
+  function disconnectWallet() {
+    localStorage.setItem(WALLET_DISMISSED_KEY, "true");
+    setWallet("");
+    setWalletChainId("");
+    setMessage("Disconnected from this dashboard. Rabby's site permission remains unchanged; reconnecting may restore the authorized account.");
+  }
+
+  function beginWalletWrite(): boolean {
+    if (pendingWriteRef.current) {
+      setMessage(`A previous wallet transaction (${pendingWriteRef.current}) is unresolved. Inspect that exact receipt before any new write.`);
+      return false;
+    }
+    if (!walletSubmissionGuard.current.tryBegin()) {
+      setMessage("A wallet transaction is already in progress. Wait for its receipt before submitting another.");
+      return false;
+    }
+    setWritePending(true);
+    return true;
+  }
+
+  function finishWalletWrite() {
+    if (pendingWriteRef.current) {
+      setWritePending(true);
+      return;
+    }
+    walletSubmissionGuard.current.finish();
+    setWritePending(false);
+  }
+
+  function recordPendingWrite(txId: string) {
+    const marker = HASH.test(txId) ? txId : "OUTCOME_UNKNOWN";
+    pendingWriteRef.current = marker;
+    setPendingWriteHash(marker);
+    setWritePending(true);
+    localStorage.setItem(PENDING_WRITE_KEY, marker);
+  }
+
+  function settlePendingWrite(txId: string) {
+    if (!pendingWriteRef.current || pendingWriteRef.current !== txId) return;
+    pendingWriteRef.current = "";
+    setPendingWriteHash("");
+    localStorage.removeItem(PENDING_WRITE_KEY);
+    walletSubmissionGuard.current.finish();
+    setWritePending(false);
+  }
+
   async function acknowledgeEoaPayout() {
+    if (!beginWalletWrite()) return;
     const payout = dashboard.payout?.ok ? asArray(dashboard.payout.value) : null;
     const acknowledgment = dashboard.payoutAcknowledgment?.ok ? dashboard.payoutAcknowledgment.value : null;
     try {
@@ -501,6 +561,7 @@ export function App() {
         args: [handles.paymentId.trim(), amountWei],
       };
       const txId = String(await submitStudioNetWrite(writer, call));
+      recordPendingWrite(txId);
       update("transactionId", txId);
       setMessage(`Acknowledgment submitted for ${formatWei(amountWei)}. Your signature attests that this exact GEN amount reached your wallet; it does not verify settlement. Waiting for finalization.`);
 
@@ -510,6 +571,7 @@ export function App() {
         const state = mapTransactionState(tx as any);
         setTransaction(tx as unknown as Record<string, unknown>);
         if (state === "FINALIZED_SUCCESS") {
+          settlePendingWrite(txId);
           setTriggeredIds([]);
           await refresh();
           const finalizedRecord = await readLatest(effectiveVault, "get_eoa_payout_acknowledgment", [handles.paymentId.trim()]);
@@ -521,6 +583,7 @@ export function App() {
           return;
         }
         if (state === "FINALIZED_FAILED" || state === "CANCELED") {
+          settlePendingWrite(txId);
           setMessage(`Acknowledgment transaction ended as ${state.replaceAll("_", " ")}. The payout settlement remains unverified.`);
           return;
         }
@@ -531,10 +594,12 @@ export function App() {
       setMessage(error instanceof Error ? error.message : "Recipient acknowledgment failed.");
     } finally {
       setAcknowledgmentSubmitting(false);
+      finishWalletWrite();
     }
   }
 
   async function vote(support: boolean) {
+    if (!beginWalletWrite()) return;
     try {
       if (!window.ethereum || !wallet) throw new Error("Connect a StudioNet wallet first.");
       if (!ADDRESS.test(handles.mandateAddress) || !handles.proposalId.trim()) {
@@ -553,15 +618,19 @@ export function App() {
         args: [handles.proposalId.trim(), support],
       };
       const txId = await submitStudioNetWrite(writer, call);
+      recordPendingWrite(String(txId));
       update("transactionId", String(txId));
       setMessage(`Vote transaction submitted: ${txId}. Submission is not confirmation; inspect its final status below.`);
-      await inspectTransaction(String(txId));
+      await inspectTransaction(String(txId), true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Vote submission failed.");
+    } finally {
+      finishWalletWrite();
     }
   }
 
   async function submitMemberCall(functionName: string, args: unknown[], description: string) {
+    if (!beginWalletWrite()) return;
     try {
       if (!window.ethereum || !wallet) throw new Error("Connect a StudioNet wallet first.");
       if (!ADDRESS.test(handles.mandateAddress)) throw new Error("A MandateOS Core address is required.");
@@ -569,26 +638,33 @@ export function App() {
       const writer: any = createWalletWriter(account, `${description}: ${functionName}`, handles.mandateAddress);
       const call = { account: account as `0x${string}`, address: handles.mandateAddress as `0x${string}`, functionName, args };
       const txId = await submitStudioNetWrite(writer, call);
+      recordPendingWrite(String(txId));
       update("transactionId", String(txId));
       setMessage(`${description} submitted: ${txId}. Submission is not confirmation; inspect final status below.`);
-      await inspectTransaction(String(txId));
+      await inspectTransaction(String(txId), true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `${description} failed.`);
+    } finally {
+      finishWalletWrite();
     }
   }
 
   async function submitVaultMemberCall(functionName: string, args: unknown[], description: string) {
+    if (!beginWalletWrite()) return;
     try {
       if (!ADDRESS.test(effectiveVault)) throw new Error("A ProjectVault address is required.");
       const account = await requireCurrentStudioNetWallet();
       const writer: any = createWalletWriter(account, `${description}: ${functionName}`, effectiveVault);
       const call = { account: account as `0x${string}`, address: effectiveVault as `0x${string}`, functionName, args };
       const txId = await submitStudioNetWrite(writer, call);
+      recordPendingWrite(String(txId));
       update("transactionId", String(txId));
       setMessage(`${description} submitted directly to ProjectVault: ${txId}. The onchain challenge is atomic with this transaction; inspect its finalized result below.`);
-      await inspectTransaction(String(txId));
+      await inspectTransaction(String(txId), true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `${description} failed.`);
+    } finally {
+      finishWalletWrite();
     }
   }
 
@@ -633,25 +709,46 @@ export function App() {
     setMessage(`Selected ${item.kind} ${item.id}. Refresh onchain state to load its details.`);
   }
 
-  async function inspectTransaction(txId = handles.transactionId.trim()) {
+  async function inspectTransaction(txId = handles.transactionId.trim(), waitForFinality = false): Promise<boolean> {
     setTransaction(null);
     setTriggeredIds([]);
     if (!HASH.test(txId)) {
       setMessage("Enter a 32-byte GenLayer transaction ID to inspect it.");
-      return;
+      return false;
     }
-    try {
-      const [tx, ids] = await Promise.all([
-        readClient.getTransaction({ hash: txId } as never),
-        readClient.getTriggeredTransactionIds({ hash: txId } as never),
-      ]);
-      setTransaction(tx as unknown as Record<string, unknown>);
-      setTriggeredIds(ids.map(String));
-      update("transactionId", txId);
-      setMessage("Transaction receipt loaded. Triggered IDs are the SDK’s internal-message child links; they do not prove EOA payout settlement.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Transaction receipt could not be loaded.");
+    const attempts = waitForFinality ? 60 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const tx = await readClient.getTransaction({ hash: txId } as never);
+        const state = mapTransactionState(tx as any);
+        setTransaction(tx as unknown as Record<string, unknown>);
+        update("transactionId", txId);
+        if (["FINALIZED_SUCCESS", "FINALIZED_FAILED", "CANCELED"].includes(state)) {
+          const ids = await readClient.getTriggeredTransactionIds({ hash: txId } as never).catch(() => []);
+          setTriggeredIds(ids.map(String));
+          settlePendingWrite(txId);
+          if (state === "FINALIZED_SUCCESS") {
+            setMessage("Transaction is FINALIZED with successful execution. Receipt and triggered IDs are shown; child IDs alone do not prove EOA settlement.");
+            if (waitForFinality) await refresh();
+          } else {
+            setMessage(`Transaction reached terminal state ${state.replaceAll("_", " ")}. Review the receipt; do not retry without reconciling contract state.`);
+          }
+          return true;
+        }
+        if (!waitForFinality) {
+          setMessage(`Transaction receipt loaded as ${state}. Its exact hash is retained as an unresolved write; inspect this receipt again before another write.`);
+          return false;
+        }
+      } catch (error) {
+        if (!waitForFinality) {
+          setMessage(error instanceof Error ? error.message : "Transaction receipt could not be loaded.");
+          return false;
+        }
+      }
+      if (attempt + 1 < attempts) await new Promise((resolve) => window.setTimeout(resolve, 2000));
     }
+    setMessage(`Transaction ${txId} is still unresolved. Its hash is retained and all new wallet writes remain disabled until this exact transaction is reconciled.`);
+    return false;
   }
 
   async function importKeeperReport(file?: File) {
@@ -717,9 +814,11 @@ export function App() {
         <div className="network-badge"><span className="network-dot" /> StudioNet <b>61999</b></div>
         <div className="top-actions">
           <span className="readonly-label">Read-only data</span>
-          <button className="button button-outline" onClick={connectWallet}>
-            {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}
-          </button>
+          {wallet ? <>
+            <button className="button button-outline" title={wallet} onClick={connectWallet}>{wallet.slice(0, 6)}…{wallet.slice(-4)}</button>
+            <button className="button button-outline" onClick={disconnectWallet}>Disconnect</button>
+          </> : <button className="button button-outline" onClick={connectWallet}>Connect wallet</button>}
+          <span className="network-badge" title={`Wallet chain ID ${walletChainId || "unknown"}`}>{wallet ? (walletChainId === STUDIONET_CHAIN_HEX ? "Wallet · StudioNet" : "Wallet · wrong network") : "Wallet · disconnected"}</span>
         </div>
       </header>
 
@@ -786,8 +885,8 @@ export function App() {
               <div className="panel-heading"><div><h3>Cast your vote</h3><p>MandateOS verifies membership, snapshot weight and deadline.</p></div><span className="query-tag tag-muted">Wallet required</span></div>
               <p className="empty-state">Connect a wallet on chain 61999 and load a proposal. Your wallet signs the vote directly; the dashboard never stores keys.</p>
               <div className="button-row">
-                <button className="button button-primary" disabled={!wallet || !handles.proposalId.trim()} onClick={() => vote(true)}>Vote for</button>
-                <button className="button button-outline" disabled={!wallet || !handles.proposalId.trim()} onClick={() => vote(false)}>Vote against</button>
+                <button className="button button-primary" disabled={!wallet || walletChainId !== STUDIONET_CHAIN_HEX || !handles.proposalId.trim() || writePending} onClick={() => vote(true)}>Vote for</button>
+                <button className="button button-outline" disabled={!wallet || walletChainId !== STUDIONET_CHAIN_HEX || !handles.proposalId.trim() || writePending} onClick={() => vote(false)}>Vote against</button>
               </div>
             </article>
           </div>
@@ -839,7 +938,7 @@ export function App() {
                 <label className="field"><span>Milestone ID</span><input name="milestoneId" required /></label>
                 <label className="field"><span>Amount (wei)</span><input name="amount" inputMode="numeric" pattern="[1-9][0-9]*" required /></label>
                 <label className="field workflow-wide"><span>Milestone criteria</span><textarea name="criteria" maxLength={1000} required /></label>
-                <button className="button button-primary" disabled={!wallet}>Sign milestone proposal</button>
+                <button className="button button-primary" disabled={!wallet || walletChainId !== STUDIONET_CHAIN_HEX || writePending}>Sign milestone proposal</button>
               </form>
               <p className="config-footnote">The amount is entered in wei. Confirm the contract and terms in your wallet before signing.</p>
             </article>
@@ -849,7 +948,7 @@ export function App() {
                 <label className="field"><span>Project ID</span><input name="projectId" required defaultValue={handles.projectId} /></label>
                 <label className="field"><span>Milestone ID</span><input name="milestoneId" required defaultValue={handles.milestoneId} /></label>
                 <label className="field workflow-wide"><span>Evidence digest or reference</span><input name="digest" required /></label>
-                <button className="button button-outline" disabled={!wallet}>Sign challenge</button>
+                <button className="button button-outline" disabled={!wallet || walletChainId !== STUDIONET_CHAIN_HEX || writePending}>Sign challenge</button>
               </form>
             </article>
           </div>
@@ -882,7 +981,7 @@ export function App() {
                 </div>
                 <div className="ack-action-row">
                   <p className="notice notice-warning">By signing, you attest that <b>{formatWei(payoutRecord[3])}</b> for payment <code>{handles.paymentId || "(select a payment)"}</code> actually reached your wallet at <code>{String(payoutRecord[2] ?? "unknown")}</code>. This statement does not independently verify settlement and does not release the payout reservation.</p>
-                  <button className="button button-primary" disabled={!canAcknowledgePayout || acknowledgmentSubmitting} onClick={() => void acknowledgeEoaPayout()}>
+                  <button className="button button-primary" disabled={!canAcknowledgePayout || acknowledgmentSubmitting || writePending} onClick={() => void acknowledgeEoaPayout()}>
                     {acknowledgmentSubmitting ? "Waiting for finalization…" : "Confirm GEN Received"}
                   </button>
                 </div>
@@ -929,6 +1028,7 @@ export function App() {
               <Field label="GenLayer transaction ID" value={handles.transactionId} onChange={(v) => update("transactionId", v)} placeholder="0x + 64 hex characters" />
               <button className="button button-outline" onClick={() => inspectTransaction()} disabled={!handles.transactionId.trim()}>Inspect receipt</button>
             </div>
+            {pendingWriteHash && <p className="notice notice-warning">Unresolved wallet write <code>{pendingWriteHash}</code>. New writes are blocked until this exact hash reaches a terminal receipt and is reconciled.</p>}
             {transaction ? (
               <div className="two-column compact-grid">
                 <DataPanel title="Stored GenLayer receipt" result={{ ok: true, value: {

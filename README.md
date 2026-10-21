@@ -6,11 +6,15 @@ The repository also contains a noncustodial, read-only StudioNet keeper and a Re
 
 ## Release status
 
-MandateOS Core and the first ProjectVault are deployed on StudioNet. Their addresses, finalized transaction receipts, constructor arguments and source hashes are documented in [LIVE_PROOFS.md](LIVE_PROOFS.md). No treasury funding or GEN transfer has been performed. The current task prepares the first DAO-member proposal; it does not submit governance transactions.
+MandateOS Core and the first ProjectVault are deployed on StudioNet. Their addresses, finalized transaction receipts, constructor arguments and source hashes are documented in [LIVE_PROOFS.md](LIVE_PROOFS.md). The initial Rabby MEMBER_ADD proposal, founder YES vote and finalization are also finalized, but the proposal remains timelocked until its onchain execution timestamp. The latest read still shows Rabby weight `0`. No treasury funding or GEN transfer has been performed.
 
 SpecLock's live StudioNet withdrawal evidence demonstrates a parent-to-triggered-child relationship with an exact EOA recipient, amount, finalized child receipt and `value_credited: true`. This provides a concrete receipt pattern for a future MandateOS keeper adapter. MandateOS has not yet wired this observation into its reconciler or run its own beneficiary payout, so its EOA milestone payouts remain unverified and cannot be marked successful or retried automatically.
 
 The configured EOA beneficiary can sign a separate ProjectVault acknowledgment for the exact payment ID and expected amount. The onchain record proves that the beneficiary wallet attested to receipt; it does not change payout settlement status or reservations and is not independent settlement evidence.
+
+The dashboard uses the explicit StudioNet RPC for latest-final reads, can request a wallet network switch/add after a user click, persists the user's local disconnect choice, rechecks account/chain/destination and gas fees before writes, and blocks duplicate concurrent writes. Unit tests cover these behaviors; compatibility with the user's Rabby installation and a live Rabby signature remain unverified.
+
+Reviewer preparation is in [docs/REVIEWER_SUBMISSION.md](docs/REVIEWER_SUBMISSION.md), the read-only demo walkthrough is [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md), the Thursday–Saturday stage checklist is [docs/THURSDAY_TO_SATURDAY_RUNBOOK.md](docs/THURSDAY_TO_SATURDAY_RUNBOOK.md), and the registration metadata commitment is in [docs/evidence/mandateos-demo-001-registration.json](docs/evidence/mandateos-demo-001-registration.json). The proposed registration cap and digest require owner approval and are not onchain state.
 
 Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [docs/PREDEPLOYMENT_READINESS.md](docs/PREDEPLOYMENT_READINESS.md) for the verified CLI route, current fee observations and limits, signer status, budget controls, deployment sequence and remaining financial-test blockers. The older [deployment audit](docs/DEPLOYMENT_READINESS.md) remains historical.
 
@@ -19,7 +23,7 @@ Read [BUILD_STATUS.md](BUILD_STATUS.md), [LIVE_PROOFS.md](LIVE_PROOFS.md), and [
 - `contracts/mandate_os.py` — membership, proposal snapshots and voting, mandates, evidence receipts, allocations, refunds, agreements, milestones, challenges and governed resolutions.
 - `contracts/project_vault.py` — project funding custody, agreement and milestone records, reserved payouts/refunds/distributions, payable repayments and revenue, default and closure guards.
 - `keeper/` — StudioNet-pinned RPC reader, durable SQLite observation archive, reconciliation classifications, alerts and reports. It never signs or sends GEN.
-- `web/` — real-data dashboard. Core and vault indexes allow recent proposal, project and vault record discovery. Wallet writes use the CLI-compatible GenLayerJS 1.1.8 route with a strict StudioNet gas-estimation guard, account/chain validation and fee confirmation before Rabby opens. Native GEN value transfer remains disabled in this wallet-write helper.
+- `web/` — real-data dashboard. Core and vault indexes allow recent proposal, project and vault record discovery. Wallet writes use the CLI-compatible GenLayerJS 1.1.8 route with a strict StudioNet gas-estimation guard, account/chain validation, network switch UX, a duplicate-write guard and fee confirmation before Rabby opens. Native GEN value transfer remains disabled in this wallet-write helper.
 - `deploy/` and `scripts/` — explicit-gate ordered CLI script-runner deployment, per-signature EVM gas caps, finalized receipt checks, deployment journals and the cumulative 10 GEN operational budget.
 - `tests/` — Direct Mode contract tests, keeper/RPC adapter tests, and frontend state-mapping tests. Test fixtures are local evidence only.
 - `docs/` — architecture, financial model, test matrix and readiness documentation.
@@ -31,8 +35,9 @@ Use Python dependencies from `requirements.txt`, the pinned GenLayer toolchain, 
 ```powershell
 python -m compileall -q contracts reference keeper tests
 python -m pytest -q
-genvm-lint contracts/mandate_os.py
-genvm-lint contracts/project_vault.py
+$env:PYTHONIOENCODING = 'utf-8'
+genvm-lint check contracts/mandate_os.py
+genvm-lint check contracts/project_vault.py
 Set-Location web
 npm ci
 npm run typecheck

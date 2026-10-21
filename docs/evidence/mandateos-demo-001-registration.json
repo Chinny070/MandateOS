@@ -1,0 +1,37 @@
+{
+  "contracts": {
+    "core": {
+      "address": "0x32698630D6144882Bd0c1D5B00C74348c53ea58B",
+      "deployment_transaction": "0x8c5c53afc9e6f8958688df572e946dc8c3880133a388bf98640615e5fd1841a7",
+      "source_sha256": "a0cad2bdc2a7be57d5e80e4f681d5f0897708bcf8b6ace53a81480c2e849a5d4"
+    },
+    "project_vault": {
+      "address": "0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4",
+      "constructor_project_id": "mandateos-demo-001",
+      "deployment_transaction": "0xd42a4c5dcb6a25ba7909eb312239d21bc8c27ffa2ef4b3cd1c33e320b5931d39",
+      "source_sha256": "2da278f14385feee0191dfd2ed9d8cfe0c29a03d5138aa638885f179f9be3c33"
+    }
+  },
+  "eligibility": {
+    "assessment": "NOT_ASSESSED",
+    "external_claims": [],
+    "status": "NOT_ASSESSED",
+    "warning": "This package commits only to deployment and project identity metadata. It is not project evidence, an eligibility decision, or a validator assessment."
+  },
+  "network": {
+    "chain_id": 61999,
+    "name": "GenLayer StudioNet",
+    "rpc": "https://studio.genlayer.com/api"
+  },
+  "package_type": "MANDATEOS_VAULT_REGISTRATION_METADATA",
+  "project": {
+    "id": "mandateos-demo-001",
+    "registered_vault_status_at_preparation": "NOT_REGISTERED",
+    "scope": "Bind the already deployed ProjectVault instance to its intended project identifier in MandateOS Core."
+  },
+  "provenance": {
+    "statement": "Deployment hashes and transaction IDs are recorded in LIVE_PROOFS.md; project identity and vault parent/project ID were also read from latest-final StudioNet contract state during preparation.",
+    "source_record": "LIVE_PROOFS.md"
+  },
+  "schema_version": 1
+}

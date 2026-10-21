@@ -6,6 +6,8 @@ export const STUDIONET_CONSENSUS_ADDRESS = "0xb7278A61aa25c888815aFC32Ad3cC52fF2
 export type Eip1193Request = { method: string; params?: unknown[] };
 export type Eip1193Provider = {
   request: (request: Eip1193Request) => Promise<unknown>;
+  on?: (event: string, listener: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
 };
 export type StudioNetFeeQuote = {
   gasLimit: bigint;
@@ -14,6 +16,63 @@ export type StudioNetFeeQuote = {
   valueWei: bigint;
 };
 export type StudioNetFeeApproval = (quote: StudioNetFeeQuote) => boolean | Promise<boolean>;
+
+export const STUDIONET_ADD_CHAIN = {
+  chainId: STUDIONET_CHAIN_HEX,
+  chainName: "GenLayer StudioNet",
+  nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+  rpcUrls: [STUDIONET_RPC],
+  blockExplorerUrls: ["https://genlayer-explorer.vercel.app"],
+};
+
+function walletErrorCode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const candidate = error as { code?: unknown; cause?: { code?: unknown } };
+  const code = candidate.code ?? candidate.cause?.code;
+  return typeof code === "number" ? code : undefined;
+}
+
+/** Connects only after a user click; network add/switch never opens a signing request. */
+export async function connectStudioNetWallet(provider: Eip1193Provider): Promise<{ account: string; chainId: string }> {
+  let chainId = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+  if (chainId !== STUDIONET_CHAIN_HEX) {
+    try {
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: STUDIONET_CHAIN_HEX }] });
+    } catch (error) {
+      if (walletErrorCode(error) !== 4902) throw new Error("Wallet could not switch to StudioNet. Select chain ID 61999 in Rabby and reconnect.");
+      await provider.request({ method: "wallet_addEthereumChain", params: [STUDIONET_ADD_CHAIN] });
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: STUDIONET_CHAIN_HEX }] });
+    }
+    chainId = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+  }
+  if (chainId !== STUDIONET_CHAIN_HEX) throw new Error("Wallet did not switch to StudioNet (chain ID 61999).");
+  const accounts = await provider.request({ method: "eth_requestAccounts" });
+  if (!Array.isArray(accounts) || typeof accounts[0] !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(accounts[0])) {
+    throw new Error("Wallet did not provide a valid account address.");
+  }
+  const [finalChain, finalAccounts] = await Promise.all([
+    provider.request({ method: "eth_chainId" }),
+    provider.request({ method: "eth_accounts" }),
+  ]);
+  if (String(finalChain).toLowerCase() !== STUDIONET_CHAIN_HEX || !Array.isArray(finalAccounts) ||
+      typeof finalAccounts[0] !== "string" || finalAccounts[0].toLowerCase() !== accounts[0].toLowerCase()) {
+    throw new Error("Wallet account or network changed during connection. Reconnect and review the active account.");
+  }
+  return { account: accounts[0], chainId: STUDIONET_CHAIN_HEX };
+}
+
+/** Synchronous guard used by the UI to reject repeated clicks before any await. */
+export function createSingleSubmissionGuard() {
+  let active = false;
+  return {
+    tryBegin(): boolean {
+      if (active) return false;
+      active = true;
+      return true;
+    },
+    finish(): void { active = false; },
+  };
+}
 
 type RpcResponse = { result?: unknown; error?: { message?: string; code?: number } };
 type TransactionRequest = Record<string, unknown> & {
