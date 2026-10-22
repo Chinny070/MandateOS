@@ -1,13 +1,44 @@
 {
   "schema_version": 1,
-  "status": "PRE_SUBMISSION_BLOCKED_REQUIRES_NEW_AUTHORIZATION",
+  "status": "PROPOSAL_FINALIZED",
   "network": "StudioNet",
   "chain_id": 61999,
   "core_address": "0x32698630D6144882Bd0c1D5B00C74348c53ea58B",
   "project_id": "mandateos-demo-001",
   "project_vault": "0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4",
   "proposal_id": "vault-register-mandateos-demo-001-20261022-01",
-  "transactions": [],
+  "transactions": [
+    {
+      "stage": "PROPOSE_VAULT_REGISTER",
+      "status": "FINALIZED_SUCCESS",
+      "prepared_at": "2026-10-22T10:17:30.810Z",
+      "user_fee_cap_wei": "0",
+      "proposal_id": "vault-register-mandateos-demo-001-20261022-01",
+      "project_id": "mandateos-demo-001",
+      "vault_address": "0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4",
+      "cap_wei": "1000000000000000",
+      "evidence_digest": "sha256:80a66dfa722a75e1403e66a8bdb816d3071e727dea522c330407842d82902bf4",
+      "membership_snapshot_expected": "2",
+      "observed_founder_weight": "1",
+      "observed_rabby_weight": "1",
+      "read_variant": "LATEST_FINAL",
+      "network": "StudioNet",
+      "chain_id": 61999,
+      "signed_gas_limit": "500000",
+      "signed_gas_price_wei": "0",
+      "signed_fee_cap_wei": "0",
+      "transaction_id": "0x5c4d7be9022b288f035db21f40cc69de6f662bbe2953fcbba8fd69a8933a8d36",
+      "submitted_at": "2026-10-22T10:17:32.699Z",
+      "final_status": "FINALIZED",
+      "result_name": "MAJORITY_AGREE",
+      "transaction_execution": "SUCCESS",
+      "evm_receipt_status": "0x1",
+      "gas_used": "0x7a1200",
+      "effective_gas_price_wei": "0x0",
+      "actual_fee_wei": "0",
+      "finalized_at": "2026-10-22T10:18:10.733Z"
+    }
+  ],
   "active_transaction": null,
   "last_attempt": {
     "stage": "PROPOSE_VAULT_REGISTER",
@@ -23,5 +54,23 @@
     "authorization_consumed_for_retry": true,
     "next_action": "Corrected request-shape guard is committed; obtain fresh explicit authorization before any new proposal attempt."
   },
-  "note": "One VAULT_REGISTER proposal transaction only; no vote, finalization, execution, deposit, or transfer is authorized."
+  "note": "One VAULT_REGISTER proposal transaction only; no vote, finalization, execution, deposit, or transfer is authorized.",
+  "latest_final_readback": {
+    "observed_at_utc": "2026-10-22T10:18:12.724Z",
+    "proposal_status": "VOTING",
+    "proposal_kind": "VAULT_REGISTER",
+    "votes_for": "0",
+    "votes_against": "0",
+    "membership_snapshot_total": "2",
+    "voting_ends_at": "1792750652",
+    "execute_after": "0",
+    "execute_by": "0",
+    "founder_weight": "1",
+    "rabby_weight": "1",
+    "project_id": "mandateos-demo-001",
+    "project_vault": "0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4",
+    "cap_wei": "1000000000000000",
+    "evidence_digest": "sha256:80a66dfa722a75e1403e66a8bdb816d3071e727dea522c330407842d82902bf4",
+    "read_variant": "LATEST_FINAL"
+  }
 }

@@ -1,5 +1,13 @@
 # Live StudioNet proofs
 
+## VAULT_REGISTER proposal — 2026-10-22
+
+The separately authorized proposal call was submitted once through the corrected GenLayer CLI workflow. StudioNet transaction **`0x5c4d7be9022b288f035db21f40cc69de6f662bbe2953fcbba8fd69a8933a8d36`** finalized with `MAJORITY_AGREE` and leader `SUCCESS`. The matching EVM receipt has status `0x1`, gas used `0x7a1200`, effective gas price `0x0`, and actual fee `0 wei` (`0 GEN`). Attached GEN was zero.
+
+Latest-final reads at `2026-10-22T10:18:12.724Z` confirm kind `VAULT_REGISTER`, status `VOTING`, 0 YES / 0 NO, membership snapshot total 2, founder weight 1 and Rabby weight 1. The exact proposal timing is `votingEndsAt=1792750652` (**2026-10-23 10:17:32 UTC / 11:17:32 Africa/Lagos**); `executeAfter` and `executeBy` are zero until finalization. The call used project `mandateos-demo-001`, vault `0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4`, cap `1000000000000000` wei, and approved metadata digest `sha256:80a66dfa722a75e1403e66a8bdb816d3071e727dea522c330407842d82902bf4`. The digest remains registration metadata only; eligibility is not assessed.
+
+The budget ledger records zero actual and committed fees, zero unresolved liabilities, and `10 GEN` remaining. No vote, finalization, execution, treasury deposit, or GEN transfer occurred. Full transaction and readback record: `deployments/vault-registration-journal.json`.
+
 ## 2026-10-22 VAULT_REGISTER proposal workflow preparation
 
 Correction to this preparation note: calldata is reproduced offline with pinned GenLayerJS 1.1.8 and compared byte-for-byte against the signer request. The offline fake RPC returns a dummy local hash and never accesses StudioNet or broadcasts. Current verification: 116 pytest; 25 Node script tests; 21 frontend tests; Python compileall; frontend typecheck/build; both GenVM lint checks passed (3 checks each) with the cached runner. New-runner lookup hit `WinError 10013`. These are local checks only.
