@@ -30,6 +30,19 @@ function sortRecursively(value) {
   if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortRecursively(value[key])]));
   return value;
 }
+function assertAuthorizedTransactionRequest(request, { consensusAddress, expectedCalldata, maxFeeWei, expectedGasPrice }) {
+  if (String(request?.to).toLowerCase() !== String(consensusAddress).toLowerCase()
+      || BigInt(request?.chainId) !== 61999n || BigInt(request?.value ?? 0n) !== 0n
+      || String(request?.account?.address ?? "").toLowerCase() !== FOUNDER
+      || String(request?.data ?? "").toLowerCase() !== expectedCalldata) {
+    throw new Error("Signed transaction calldata, signer, destination, network, or GEN value differs from authorization.");
+  }
+  const gas = quantity(request.gas, "signed gas limit");
+  const gasPrice = quantity(request.gasPrice, "signed gas price");
+  const feeCap = gas * gasPrice;
+  if (feeCap > BigInt(maxFeeWei) || gasPrice !== BigInt(expectedGasPrice)) throw new Error("Signed maximum fee exceeds zero GEN or gas price changed after preflight.");
+  return { gas, gasPrice, feeCap };
+}
 function assertApprovedParameters() {
   const approval = safety.readJson(path.join(ROOT, "deployments", "registration-parameter-approval.json"), null);
   const evidence = safety.readJson(path.join(ROOT, "docs", "evidence", `${PROJECT_ID}-registration.json`), null);
@@ -126,14 +139,10 @@ module.exports = async function runVaultRegistration(cliClient) {
     account.signTransaction = async (request) => {
       if (estimateFailed || !signingAllowed || signatureCount !== 0) throw new Error("Unexpected or unestimated signature request; refusing to sign.");
       const consensus = String(cliClient.chain.consensusMainContract?.address ?? "").toLowerCase();
-      if (String(request.to).toLowerCase() !== consensus || BigInt(request.chainId) !== 61999n || BigInt(request.value ?? 0n) !== 0n
-          || String(request.from).toLowerCase() !== FOUNDER || String(request.data).toLowerCase() !== expectedCalldata) {
-        throw new Error("Signed transaction calldata, signer, destination, network, or GEN value differs from authorization.");
-      }
-      const gas = quantity(request.gas, "signed gas limit");
-      const gasPrice = quantity(request.gasPrice, "signed gas price");
-      const feeCap = gas * gasPrice;
-      if (feeCap !== 0n || gasPrice !== currentGasPrice) throw new Error("Signed maximum fee exceeds zero GEN or gas price changed after preflight.");
+      const { gas, gasPrice, feeCap } = assertAuthorizedTransactionRequest(request, {
+        consensusAddress: consensus, expectedCalldata, maxFeeWei: 0n, expectedGasPrice: currentGasPrice,
+      });
+      if (feeCap !== 0n) throw new Error("This proposal authorization requires an exact zero GEN signed fee commitment.");
       signatureCount += 1;
       prepared.status = "SIGNING_PREPARED"; prepared.signed_gas_limit = gas.toString();
       prepared.signed_gas_price_wei = gasPrice.toString(); prepared.signed_fee_cap_wei = feeCap.toString();
@@ -206,5 +215,6 @@ module.exports = async function runVaultRegistration(cliClient) {
 };
 
 module.exports.assertApprovedParameters = assertApprovedParameters;
+module.exports.assertAuthorizedTransactionRequest = assertAuthorizedTransactionRequest;
 module.exports.proposalArguments = () => [PROPOSAL_ID, PROJECT_ID, addressString(VAULT), CAP_WEI, DIGEST];
 module.exports.constants = { CORE, VAULT, FOUNDER, PROJECT_ID, PROPOSAL_ID, DIGEST, CAP_WEI, RPC };

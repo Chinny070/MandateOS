@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "status": "PRE_SUBMISSION_BLOCKED_REQUIRES_NEW_AUTHORIZATION",
+  "network": "StudioNet",
+  "chain_id": 61999,
+  "core_address": "0x32698630D6144882Bd0c1D5B00C74348c53ea58B",
+  "project_id": "mandateos-demo-001",
+  "project_vault": "0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4",
+  "proposal_id": "vault-register-mandateos-demo-001-20261022-01",
+  "transactions": [],
+  "active_transaction": null,
+  "last_attempt": {
+    "stage": "PROPOSE_VAULT_REGISTER",
+    "observed_at": "2026-10-22T10:04:42.931+01:00",
+    "status": "BLOCKED_BEFORE_SIGNATURE",
+    "failure": "CLI signing request uses request.account.address; workflow mistakenly expected request.from. Guard rejected the request before calling the original signer.",
+    "signer_hook_invoked": true,
+    "private_key_signing_invoked": false,
+    "broadcast": false,
+    "transaction_hash": null,
+    "actual_fee_wei": "0",
+    "fee_status": "NO_TRANSACTION_NO_FEE",
+    "authorization_consumed_for_retry": true,
+    "next_action": "Corrected request-shape guard is committed; obtain fresh explicit authorization before any new proposal attempt."
+  },
+  "note": "One VAULT_REGISTER proposal transaction only; no vote, finalization, execution, deposit, or transfer is authorized."
+}

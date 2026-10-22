@@ -23,6 +23,23 @@ test("pinned GenLayerJS dry run derives exact calldata without broadcasting", as
   assert.match(calldata, /^0x[0-9a-f]+$/);
 });
 
+test("signing guard verifies CLI account.address and exact fee/calldata without expecting request.from", () => {
+  const request = {
+    account: { address: workflow.constants.FOUNDER },
+    to: "0xb7278a61aa25c888815afc32ad3cc52ff24fe575",
+    data: "0x1234", chainId: 61999, value: 0n, gas: 500000n, gasPrice: 0n,
+  };
+  assert.deepEqual(workflow.assertAuthorizedTransactionRequest(request, {
+    consensusAddress: request.to, expectedCalldata: request.data, maxFeeWei: 0n, expectedGasPrice: 0n,
+  }), { gas: 500000n, gasPrice: 0n, feeCap: 0n });
+  assert.throws(() => workflow.assertAuthorizedTransactionRequest({ ...request, account: { address: "0x0000000000000000000000000000000000000001" } }, {
+    consensusAddress: request.to, expectedCalldata: request.data, maxFeeWei: 0n, expectedGasPrice: 0n,
+  }), /signer/);
+  assert.throws(() => workflow.assertAuthorizedTransactionRequest({ ...request, gasPrice: 1n }, {
+    consensusAddress: request.to, expectedCalldata: request.data, maxFeeWei: 0n, expectedGasPrice: 0n,
+  }), /fee/);
+});
+
 test("vault registration dispatcher refuses invalid authorization before deploy/write", async () => {
   const old = process.env.MANDATEOS_VAULT_REGISTRATION_APPROVED;
   const cli = { deployContract: () => assert.fail("deployment must not be reached") };
