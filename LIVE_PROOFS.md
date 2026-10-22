@@ -1,5 +1,11 @@
 # Live StudioNet proofs
 
+## 2026-10-22 VAULT_REGISTER proposal workflow preparation
+
+Correction to this preparation note: calldata is reproduced offline with pinned GenLayerJS 1.1.8 and compared byte-for-byte against the signer request. The offline fake RPC returns a dummy local hash and never accesses StudioNet or broadcasts. Current verification: 116 pytest; 25 Node script tests; 21 frontend tests; Python compileall; frontend typecheck/build; both GenVM lint checks passed (3 checks each) with the cached runner. New-runner lookup hit `WinError 10013`. These are local checks only.
+
+A safe one-step signer route was missing, so `scripts/vault-registration-cli.cjs` and a gated dispatch in `deploy/01_studionet.js` were added and tested. The route verifies StudioNet chain 61999, founder CLI signer, both latest-final member weights, unused proposal ID, unregistered project, ProjectVault's parent/project readbacks, and the canonical metadata digest against the parameter-only approval. It signs only the exact approved calldata with zero attached GEN and rejects any nonzero signed fee commitment. It journals before signature, permits at most one signature, waits for FINALIZED/MAJORITY_AGREE/leader SUCCESS, checks a matching successful EVM receipt and zero actual fee, then reads proposal status, membership snapshot, and actual timing. Any ambiguous result blocks replay. Local tests passed (116 pytest, 24 Node script tests, 21 frontend tests; compileall/typecheck/build passed). GenVM lint was unavailable in this current environment. **No registration proposal transaction is claimed here until independently read and verified on StudioNet.**
+
 **MandateOS Core and the first ProjectVault are deployed and independently checked on StudioNet (chain ID 61999).** Deployment was explicitly authorized on 2026-10-20 (Africa/Lagos), with a 10 GEN cumulative fee ceiling. No treasury deposit, project funding, governance write, payout, repayment, or GEN test transfer was authorized or performed.
 
 ## MandateOS deployment

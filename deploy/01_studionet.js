@@ -9,6 +9,7 @@ const RPC = "https://studio.genlayer.com/api";
 const CHAIN_ID = 61999;
 const APPROVAL_PHRASE = "I_APPROVE_MANDATEOS_STUDIONET_DEPLOYMENT";
 const MEMBERSHIP_APPROVAL = "I_AUTHORIZE_MANDATEOS_MEMBER_ONBOARDING_STEP";
+const VAULT_REGISTRATION_APPROVAL = "I_AUTHORIZE_MANDATEOS_VAULT_REGISTRATION_STEP";
 const CORE_SOURCE = path.join(ROOT, "contracts", "mandate_os.py");
 const VAULT_SOURCE = path.join(ROOT, "contracts", "project_vault.py");
 const BUDGET_PATH = path.join(ROOT, "deployments", "studionet-budget.json");
@@ -24,6 +25,12 @@ function rpcQuantity(value, field) {
 function writeRecord(record) { safety.atomicWriteJson(RECORD_PATH, record); }
 
 module.exports = async function deployMandateOS(cliClient) {
+  if (process.env.MANDATEOS_VAULT_REGISTRATION_APPROVED !== undefined) {
+    if (process.env.MANDATEOS_VAULT_REGISTRATION_APPROVED !== VAULT_REGISTRATION_APPROVAL) {
+      throw new Error("Vault registration workflow approval token is invalid; no transaction was submitted.");
+    }
+    return require("../scripts/vault-registration-cli.cjs")(cliClient);
+  }
   if (process.env.MANDATEOS_MEMBERSHIP_APPROVED !== undefined) {
     if (process.env.MANDATEOS_MEMBERSHIP_APPROVED !== MEMBERSHIP_APPROVAL) {
       throw new Error("Membership workflow approval token is invalid; no deployment or governance transaction was submitted.");
