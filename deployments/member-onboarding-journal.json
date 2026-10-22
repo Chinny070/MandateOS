@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "STEP_FINALIZED",
+  "status": "MEMBER_ADDED_VERIFIED",
   "network": "StudioNet",
   "chain_id": 61999,
   "core_address": "0x32698630D6144882Bd0c1D5B00C74348c53ea58B",
@@ -65,12 +65,35 @@
       "effective_gas_price_wei": "0x0",
       "actual_fee_wei": "0",
       "finalized_at": "2026-10-21T06:28:40.235Z"
+    },
+    {
+      "stage": "EXECUTE_MEMBER_ADD",
+      "status": "FINALIZED",
+      "prepared_at": "2026-10-22T07:51:29.141Z",
+      "user_fee_cap_wei": "0",
+      "signed_gas_limit": "500000",
+      "signed_gas_price_wei": "0",
+      "signed_fee_cap_wei": "0",
+      "transaction_id": "0x90c256ce0e85cccf075337a9dbb19a8ead85b51fff5303934e8085134c2d6e6a",
+      "method": "execute_governance_proposal",
+      "proposal_id": "member-add-rabby-1af111b06e6f6a05-20261020-01",
+      "submitted_at": "2026-10-22T07:51:30.878Z",
+      "final_status": "FINALIZED",
+      "result_name": "MAJORITY_AGREE",
+      "transaction_execution": "SUCCESS",
+      "validator_votes": ["agree", "agree", "agree", "agree", "agree"],
+      "evm_receipt_status": "0x1",
+      "gas_used": "0x7a1200",
+      "effective_gas_price_wei": "0x0",
+      "actual_fee_wei": "0",
+      "finalized_at": "2026-10-22T07:52:08.899Z"
     }
   ],
   "active_transaction": null,
   "latest_final_readback": {
-    "latest_chain_timestamp": "1792564201",
-    "proposal_status": "TIMELOCKED",
+    "observed_at_utc": "2026-10-22T08:03:03.902Z",
+    "latest_chain_timestamp": "1792656172",
+    "proposal_status": "EXECUTED",
     "proposal_kind": "MEMBER_ADD",
     "votes_for": "1",
     "votes_against": "0",
@@ -78,11 +101,11 @@
     "execute_after": "1792650476",
     "execute_by": "1793255276",
     "founder_weight": "1",
-    "rabby_weight": "0",
+    "rabby_weight": "1",
     "read_variant": "LATEST_FINAL"
   },
   "notes": [
-    "The MEMBER_ADD proposal, founder YES vote, and proposal finalization are finalized; the proposal is TIMELOCKED. Do not execute until a separate explicit authorization and the onchain execute_after timestamp.",
+    "The separately authorized execute_governance_proposal transaction is finalized with MAJORITY_AGREE and leader SUCCESS. Latest-final reads confirm EXECUTED and founder/Rabby weights of 1/1.",
     "A stage may be advanced only after fresh latest-final state checks and explicit user authorization with a numeric per-transaction fee cap.",
     "Unresolved or hashless signing attempts block all replay until manually reconciled."
   ]

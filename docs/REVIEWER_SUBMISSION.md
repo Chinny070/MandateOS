@@ -33,7 +33,7 @@ EOA payment acknowledgments are stored as beneficiary attestations only. They do
 - MandateOS Core: `0x32698630D6144882Bd0c1D5B00C74348c53ea58B`, deployment transaction `0x8c5c53afc9e6f8958688df572e946dc8c3880133a388bf98640615e5fd1841a7`.
 - ProjectVault: `0x03325B7EB2668CfF6bE3B2e9805d600bB9E1a2F4`, deployment transaction `0xd42a4c5dcb6a25ba7909eb312239d21bc8c27ffa2ef4b3cd1c33e320b5931d39`.
 - Core source SHA-256 at deployment: `a0cad2bdc2a7be57d5e80e4f681d5f0897708bcf8b6ace53a81480c2e849a5d4`; ProjectVault source SHA-256: `2da278f14385feee0191dfd2ed9d8cfe0c29a03d5138aa638885f179f9be3c33`.
-- MEMBER_ADD proposal, founder YES vote, and finalization are finalized with majority agreement and successful leader execution. At the latest successful read, the Rabby member was **not yet added**: status `TIMELOCKED`, Rabby weight `0`. The execution window begins October 22 at 07:27:56 Lagos; a new latest-final read is required before any separately authorized execution.
+- MEMBER_ADD proposal, founder YES vote, finalization, and execution are finalized with majority agreement and successful leader execution. The execution transaction is `0x90c256ce0e85cccf075337a9dbb19a8ead85b51fff5303934e8085134c2d6e6a`; latest-final read at `2026-10-22T08:03:03.902Z` confirms status `EXECUTED`, founder weight `1`, and Rabby weight `1`. See `LIVE_PROOFS.md` for receipt and fee evidence.
 - Fresh read-only StudioNet observation at `2026-10-21T07:13:29.863Z` (latest block timestamp `1792566806`, 2026-10-21 07:13:26 UTC): chain ID `0xf22f`; Core treasury summary all zero; mandate version 1, max project exposure 2000 bps, reserve 1500 bps, max single allocation 30 GEN, 86400-second challenge window, and 604800-second (7-day) evidence freshness limit; registered project count 0; Core has no registered vault for the project; deployed vault points to Core, reports project ID `mandateos-demo-001`, balance 0.
 - Full live receipts, times, and limitations are in [LIVE_PROOFS.md](../LIVE_PROOFS.md).
 
@@ -44,7 +44,7 @@ Local Direct Mode tests exercise governance, accounting, evidence gating, and co
 ### NOT YET VERIFIED LIVE
 
 - Rabby account compatibility with this specific browser installation and a Rabby-signed governance vote.
-- Rabby membership execution, second-member voting, vault registration, treasury deposit, project funding, evidence assessment, milestones, payout, refund, repayment, distribution, and closure.
+- A Rabby-signed governance vote, vault registration, treasury deposit, project funding, evidence assessment, milestones, payout, refund, repayment, distribution, and closure.
 - Any project eligibility result or independent settlement proof.
 - The registration cap cannot be queried directly from the deployed Core: this version has no public cap getter. The final cap would need to be shown in the finalized registration proposal/transaction evidence; source change and redeployment are outside this submission preparation.
 

@@ -4,12 +4,12 @@ This is a dependency checklist, not transaction authorization. Every write needs
 
 ## Current anchor
 
-Read-only StudioNet review at `2026-10-21T07:13:29.863Z` returned chain ID `0xf22f`, latest block timestamp `1792566806` (`2026-10-21 07:13:26 UTC`), member proposal `TIMELOCKED`, 1 YES / 0 NO, founder weight 1, Rabby weight 0. The earliest member-execution timestamp is `1792650476` = **Thursday, October 22, 2026 07:27:56 Africa/Lagos**. Its execution window closes `1793255276` = **Thursday, October 29 07:27:56 Africa/Lagos**.
+The member-add execution is complete. Read-only StudioNet verification at `2026-10-22T08:03:03.902Z` returned chain ID `0xf22f`, proposal `EXECUTED`, 1 YES / 0 NO, founder weight 1, Rabby weight 1. The `executeAfter` / `executeBy` values were `1792650476` / `1793255276`. Transaction and fee evidence are in `LIVE_PROOFS.md`.
 
 ## Thursday, October 22
 
-1. Before attempting membership execution, run `node scripts/membership-onboarding-status.mjs`. Confirm latest-final status is still `TIMELOCKED`, member weight remains 0, chain timestamp is at least `executeAfter` and no later than `executeBy`, no prior execution transaction is journaled, fee estimate succeeds, and fee is within the exact separately approved cap.
-2. Obtain explicit authorization for the single `execute_governance_proposal` step. No authorization is included in this preparation task. Execute once with the resumable workflow, then verify its actual hash, FINALIZED status, MAJORITY_AGREE, leader SUCCESS, EVM receipt/fee, proposal `EXECUTED`, and Rabby weight 1. Stop on an uncertain result; reconcile the same hash.
+1. **Completed:** the one separately authorized `execute_governance_proposal` transaction finalized as `MAJORITY_AGREE` / leader `SUCCESS`; the matching EVM receipt records actual fee 0 GEN. Latest-final state verifies proposal `EXECUTED` and member weights 1/1. See `LIVE_PROOFS.md`.
+2. Before a VAULT_REGISTER proposal, recheck the exact candidate ID is unused, project/vault identity, owner-approved parameter record, registration state, and fee quote. Obtain a separate one-transaction authorization; the parameter approval alone is not sufficient.
 3. Only after membership readback, recheck the exact candidate registration ID, Core registration state, vault parent/project identity, mandate summary, treasury balance and current fee estimate. The candidate is `vault-register-mandateos-demo-001-20261022-01`; it was UNKNOWN and absent from the index at the latest read, but must be checked again.
 4. The owner has approved the exact project ID, cap, and metadata digest as parameters only (recorded in `deployments/registration-parameter-approval.json`). This is not proposal authorization. Before proposing, recheck that the proposal ID is unused, verify exact calldata and latest-final registration state, refresh the fee quote, and obtain a separate one-transaction authorization with fee cap. Founder and Rabby must each submit a YES vote from their own wallet after latest-final checks confirm proposal kind, voting window, and each member's eligible snapshot weight. Do not treat two transactions from the founder as two members.
 

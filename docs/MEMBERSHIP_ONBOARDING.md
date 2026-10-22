@@ -1,6 +1,6 @@
 # Historical StudioNet DAO membership onboarding preparation
 
-> **Superseded status:** The member-add proposal, founder YES vote, and finalization described below have since been submitted and finalized. The latest state is `TIMELOCKED`, not `UNKNOWN` or `VOTING`. See [LIVE_PROOFS.md](../LIVE_PROOFS.md) and [THURSDAY_TO_SATURDAY_RUNBOOK.md](THURSDAY_TO_SATURDAY_RUNBOOK.md) for current verified records. This document's first sections preserve the original pre-submission preparation snapshot.
+> **Historical preparation snapshot:** The member-add proposal, founder YES vote, and finalization described below have since been submitted and finalized; the proposal has also been executed. Current verified status is `EXECUTED`, with founder and Rabby weights both `1`. See [LIVE_PROOFS.md](../LIVE_PROOFS.md) for the receipt and latest-final readback. The first sections preserve the original pre-submission preparation snapshot.
 
 The workflow was prepared for the already deployed MandateOS Core. It does not deploy contracts. Subsequent separately authorized membership governance transactions are recorded in `LIVE_PROOFS.md`.
 
@@ -80,4 +80,8 @@ The candidate VAULT_REGISTER proposal ID `vault-register-mandateos-demo-001-2026
 
 Preserve these exact VAULT_REGISTER inputs: project ID `mandateos-demo-001`, cap `1000000000000000` wei (`0.001 GEN`), and metadata digest `sha256:80a66dfa722a75e1403e66a8bdb816d3071e727dea522c330407842d82902bf4`. The digest was recomputed from the unchanged metadata package and matches. Approval is strictly parameter-only. No proposal, vote, finalization, execution, signer unlock, signature, deposit, or transfer is authorized by it. Recheck the candidate proposal ID for uniqueness immediately before a separately authorized proposal.
 
-The next transaction priority remains the existing Rabby MEMBER_ADD execution, eligible no earlier than the recorded onchain `executeAfter` time, **2026-10-22 07:27:56 Africa/Lagos**. Before that write, rerun the latest-final planner, verify proposal status and Rabby weight, refresh the exact fee estimate, and obtain the owner's separate one-transaction authorization and numeric fee cap. Prior zero-fee approvals applied only to their specific earlier transactions; they do not authorize this execution. No action is pre-authorized by this preparation update.
+## Rabby membership execution — 2026-10-22
+
+The separately authorized execution transaction `0x90c256ce0e85cccf075337a9dbb19a8ead85b51fff5303934e8085134c2d6e6a` called `execute_governance_proposal` for the exact member-add proposal. Independent StudioNet receipt reconciliation confirms `FINALIZED`, `MAJORITY_AGREE`, leader `SUCCESS`, five agreeing validator votes, and matching successful EVM receipt with actual fee `0 GEN`. Latest-final reads at `2026-10-22T08:03:03.902Z` show proposal `EXECUTED`, 1 YES / 0 NO, founder weight `1`, Rabby weight `1`. The journal and live proof record were updated. No additional transaction was submitted.
+
+The next possible governance step is the separately authorized VAULT_REGISTER proposal using the approved project ID, cap, and metadata digest in `deployments/registration-parameter-approval.json`. That approval covers parameters only. Recheck the candidate proposal ID and all state/fee conditions, and obtain separate authorization before any proposal submission. Both members must cast their own YES votes to meet the two-member quorum and approval thresholds.

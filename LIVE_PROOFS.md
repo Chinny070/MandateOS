@@ -38,7 +38,7 @@ The GenLayer receipts returned the contract addresses shown above and decoded th
 - StudioNet `eth_chainId` returned `0xf22f`; current `eth_gasPrice` returned `0x0` at preflight. These are time-specific read-only observations.
 - SpecLock deployment and triggered-transfer receipts remain external reference evidence only. They do not establish MandateOS payout settlement.
 - EOA payouts remain unverified and unsuitable for production until MandateOS independently reconciles a causal external transfer receipt. Do not retry uncertain transfers.
-- Two-member DAO voting is not yet possible because Rabby membership has not been executed. Live funding, validator-backed web evidence, IC-beneficiary payouts, refunds, repayments and keeper reconciliation have not been exercised.
+- Two-member DAO voting is now enabled by the verified Rabby membership execution. A Rabby-signed vote has not yet been tested. Live funding, validator-backed web evidence, IC-beneficiary payouts, refunds, repayments and keeper reconciliation have not been exercised.
 - Local tests and GenVM lint are reported in `BUILD_STATUS.md`; they are not live settlement evidence.
 
 ## Repository evidence
@@ -67,7 +67,7 @@ The founder separately authorized one `propose_member_add` transaction and later
 | `propose_member_add` | `0xc1e14ac8f3019cb5996b03f1d4e443b787c2f69cf4f7ecb0c473f3c3907b4264` | `FINALIZED`, `MAJORITY_AGREE`, leader `SUCCESS` | status `0x1`; gas used `0x7a1200`; effective gas price `0x0` | `0 GEN` |
 | founder `vote(..., true)` | `0x623fcedd7df12e20710e5857760d8b07d995fa527ad16bd7689b0a20efe85558` | `FINALIZED`, `MAJORITY_AGREE`, leader `SUCCESS` | status `0x1`; gas used `0x7a1200`; effective gas price `0x0` | `0 GEN` |
 
-The latest-final state read after the vote reported proposal ID `member-add-rabby-1af111b06e6f6a05-20261020-01`, kind `MEMBER_ADD`, status `VOTING`, votes for `1`, votes against `0`, voting deadline `1792562587`, founder weight `1`, and Rabby weight `0`. Latest chain timestamp at that read was `1792478535`, before the deadline. Finalization has since been separately authorized and is recorded below; Rabby remains unregistered pending proposal execution.
+The latest-final state read after the vote reported proposal ID `member-add-rabby-1af111b06e6f6a05-20261020-01`, kind `MEMBER_ADD`, status `VOTING`, votes for `1`, votes against `0`, voting deadline `1792562587`, founder weight `1`, and Rabby weight `0`. Latest chain timestamp at that historical read was `1792478535`, before the deadline. Finalization and execution were subsequently authorized and are recorded below.
 
 The GenLayer receipt for the vote identifies the exact `vote` calldata, founder sender, Core recipient, `FINALIZED` status, `MAJORITY_AGREE`, and leader `SUCCESS`; the independent EVM receipt has status `0x1`, gas used `0x7a1200`, and effective gas price `0`. The budget ledger records these transactions, actual fees `0`, no pending or unknown liabilities, and `10 GEN` remaining. Zero fee is the observed result of these transactions, not a guarantee for future transactions.
 
@@ -90,3 +90,9 @@ The owner approved preserving the project ID `mandateos-demo-001`, cap **0.001 G
 A fresh invocation of `node scripts/saturday-review-readonly.mjs` was attempted. It failed at `eth_chainId` with socket `EACCES` to StudioNet's Cloudflare endpoint from the current sandbox. No network-health conclusion can be drawn. The newest successful read remains the 07:13:29.863 UTC snapshot above; current state must be refreshed in an authorized network-capable environment before any governance action. No signer, transaction, or wallet was accessed.
 
 The read-only command used is `node scripts/saturday-review-readonly.mjs`; its source imports no signer and contains no contract write method. No transactions, signatures, wallet unlocks, treasury deposits, GEN transfers, or deployment actions occurred during this check.
+
+## Separately authorized Rabby membership execution — 2026-10-22
+
+The owner authorized exactly one `execute_governance_proposal("member-add-rabby-1af111b06e6f6a05-20261020-01")` transaction with 0 attached GEN and a maximum fee of 0 GEN. The transaction is `0x90c256ce0e85cccf075337a9dbb19a8ead85b51fff5303934e8085134c2d6e6a` from the founder to MandateOS Core `0x32698630D6144882Bd0c1D5B00C74348c53ea58B`. StudioNet receipt reconciliation confirms `FINALIZED`, `MAJORITY_AGREE`, leader `SUCCESS`, and five validator votes `agree`. The calldata decodes to the exact authorized method and proposal ID. The EVM receipt hash matches, status is `0x1`, gas used `0x7a1200`, effective gas price `0x0`, actual fee `0 wei` (`0 GEN`).
+
+Latest-final Core reads at `2026-10-22T08:03:03.902Z` (latest chain timestamp `1792656172`, 08:02:52 UTC) confirm proposal status `EXECUTED`, kind `MEMBER_ADD`, 1 YES / 0 NO, founder weight `1`, and Rabby `0x1Af111b06E6f6A05Bd41572A016318f1356aF85c` weight `1`. The proposal timing remains `votingEndsAt=1792562587`, `executeAfter=1792650476`, `executeBy=1793255276`. The journal records this state and transaction. The fee ledger remains at actual fees `0`, committed fees `0`, unknown liabilities `0`, and `10 GEN` remaining. No further governance or financial transaction was submitted.

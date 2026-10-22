@@ -14,5 +14,5 @@
   "pending_transaction_id": null,
   "remaining_wei": "10000000000000000000",
   "status": "PREPARED_NO_SPEND",
-  "last_settled_transaction_id": "0xce45577d02ffa736a7ff0fbefd3f833289fb3544e223672eb75b31db1eb883e0"
+  "last_settled_transaction_id": "0x90c256ce0e85cccf075337a9dbb19a8ead85b51fff5303934e8085134c2d6e6a"
 }
